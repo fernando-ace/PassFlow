@@ -31,6 +31,9 @@
 
 export * from './types'
 export { processorRegistry } from './registry'
-
-// PassFlow intentionally ships without active processors in this milestone.
-// Future QR and CV processors can register through the preserved registry.
+export {
+  ensurePersonDetectionProcessorRegistered,
+  PERSON_DETECTION_CONFIG,
+  PERSON_DETECTION_PROCESSOR_ID,
+  PersonDetectionProcessor,
+} from './personDetectionProcessor'
