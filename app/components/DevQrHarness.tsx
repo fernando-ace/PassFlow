@@ -16,6 +16,10 @@ import {
 import { processorRegistry } from '@/lib/video-processors/registry'
 import type { ProcessorResult } from '@/lib/video-processors/types'
 import { useVideoProcessing } from '@/lib/video-processors/useVideoProcessing'
+import {
+  ensurePersonDetectionProcessorRegistered,
+  PERSON_DETECTION_PROCESSOR_ID,
+} from '@/lib/video-processors/personDetectionProcessor'
 
 const NO_EVENTS: DetectionEvent[] = []
 
@@ -66,7 +70,13 @@ export function DevQrHarness() {
   const [staticPreview, setStaticPreview] = useState<string | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoRunning, setVideoRunning] = useState(false)
-  const { decision, credentialChecking, credentialVerified } = useAccessDecision()
+  const {
+    decision,
+    credentialChecking,
+    credentialVerified,
+    processPeopleResult,
+    resetDecision,
+  } = useAccessDecision()
   const [events, setEvents] = useState<HarnessEvent[]>([])
   const [busy, setBusy] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -74,6 +84,7 @@ export function DevQrHarness() {
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [overlayElement, setOverlayElement] = useState<HTMLCanvasElement | null>(null)
   const lastVideoResultId = useRef<string | null>(null)
+  const lastPeopleResultId = useRef<string | null>(null)
   const staticUrlRef = useRef<string | null>(null)
   const videoUrlRef = useRef<string | null>(null)
   const verificationControllerRef = useRef<AbortController | null>(null)
@@ -89,6 +100,7 @@ export function DevQrHarness() {
 
   useEffect(() => {
     processorRegistry.register(processor)
+    ensurePersonDetectionProcessorRegistered()
     return () => processorRegistry.unregister(processor.id)
   }, [processor])
 
@@ -104,7 +116,13 @@ export function DevQrHarness() {
     enabled: videoRunning,
     fps: 2,
   })
-  useCanvasOverlay({ videoRef, canvasRef: overlayRef, events: NO_EVENTS, results })
+  useCanvasOverlay({
+    videoRef,
+    canvasRef: overlayRef,
+    events: NO_EVENTS,
+    results,
+    showDebug: true,
+  })
 
   const record = useCallback((source: string, outcome: string, detail: string) => {
     setEvents((current) => [{ id: Date.now() + Math.random(), source, outcome, detail }, ...current].slice(0, 12))
@@ -147,11 +165,27 @@ export function DevQrHarness() {
   }, [processor, record, verifyResult])
 
   const videoResult = results.get(QR_CREDENTIAL_PROCESSOR_ID)
+  const peopleResult = results.get(PERSON_DETECTION_PROCESSOR_ID)
   useEffect(() => {
     if (!videoResult || videoResult.id === lastVideoResultId.current) return
     lastVideoResultId.current = videoResult.id
     void verifyResult(videoResult, 'Prerecorded video')
   }, [videoResult, verifyResult])
+
+  useEffect(() => {
+    if (!peopleResult || peopleResult.id === lastPeopleResultId.current) return
+    lastPeopleResultId.current = peopleResult.id
+    processPeopleResult(peopleResult)
+
+    const crossings = peopleResult.data?.crossings
+    if (Array.isArray(crossings) && crossings.length) {
+      record(
+        'Entrance crossing',
+        `${crossings.length} ENTERING`,
+        `Track ${crossings.map((crossing) => crossing.trackId).join(', ')} crossed the configured boundary.`,
+      )
+    }
+  }, [peopleResult, processPeopleResult, record])
 
   async function generatePass() {
     setBusy(true)
@@ -250,8 +284,30 @@ export function DevQrHarness() {
     const url = URL.createObjectURL(file)
     videoUrlRef.current = url
     setVideoRunning(false)
+    resetDecision()
     setVideoUrl(url)
-    record('Prerecorded video', 'READY', `${file.name} loaded. Play it to sample at 2 FPS.`)
+    record('Prerecorded video', 'READY', `${file.name} loaded. Playback uses the same 2 FPS processors as Ring video.`)
+  }
+
+  async function playScenario(withCredential: boolean) {
+    if (!videoRef.current) return
+    setBusy(true)
+    try {
+      resetDecision()
+      videoRef.current.pause()
+      videoRef.current.currentTime = 0
+      if (withCredential) {
+        if (!generatedQr) throw new Error('Generate a signed credential first.')
+        await processor.init()
+        const result = await scanImageUrl(generatedQr, 'Scenario credential')
+        if (!result) throw new Error('The credential scan was suppressed. Generate a fresh credential and retry.')
+      }
+      await videoRef.current.play()
+    } catch (error) {
+      record('Scenario playback', 'ERROR', error instanceof Error ? error.message : 'Playback failed.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -262,9 +318,9 @@ export function DevQrHarness() {
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-passflow-warning">Development only</p>
           <div className="mt-2 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-passflow-ink">QR pipeline test harness</h1>
+              <h1 className="text-3xl font-semibold tracking-tight text-passflow-ink">Credential + entrance test harness</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-passflow-muted">
-                Exercises the same decoder, duplicate guard, and server verification used by Ring video. It does not simulate, replace, or verify the Ring camera path.
+                Exercises the production QR, person detection, tracking, crossing, and access-decision path with local media. It does not simulate, replace, or verify the Ring camera path.
               </p>
             </div>
             <Link href="/" className="text-sm font-semibold text-passflow-accent hover:text-passflow-accent-hover">Back to PassFlow</Link>
@@ -300,13 +356,22 @@ export function DevQrHarness() {
               </div>
 
               <div className="rounded-xl border border-passflow-border bg-white p-6">
-                <h2 className="text-lg font-semibold text-passflow-ink">Prerecorded moving QR video</h2>
-                <p className="mt-2 text-sm leading-6 text-passflow-muted">Choose a local video, then play it. Frames use the production 2 FPS processor path.</p>
-                <input aria-label="Choose prerecorded QR video" className="mt-4 block w-full text-sm text-passflow-muted" type="file" accept="video/*" onChange={selectVideo} />
+                <h2 className="text-lg font-semibold text-passflow-ink">Prerecorded entrance video</h2>
+                <p className="mt-2 text-sm leading-6 text-passflow-muted">Choose a local doorway video. Bounding boxes, track IDs, and the calibrated entrance boundary appear here in development only.</p>
+                <input aria-label="Choose prerecorded entrance video" className="mt-4 block w-full text-sm text-passflow-muted" type="file" accept="video/*" onChange={selectVideo} />
                 {videoUrl ? (
-                  <div className="relative mt-4 overflow-hidden rounded-lg bg-passflow-video">
-                    <video ref={attachVideo} src={videoUrl} controls muted playsInline className="aspect-video w-full object-contain" onPlay={() => setVideoRunning(true)} onPause={() => setVideoRunning(false)} onEnded={() => setVideoRunning(false)} />
-                    <canvas ref={attachOverlay} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
+                  <div className="mt-4">
+                    <div className="relative overflow-hidden rounded-lg bg-passflow-video">
+                      <video ref={attachVideo} src={videoUrl} controls muted playsInline className="aspect-video w-full object-contain" onPlay={() => setVideoRunning(true)} onPause={() => setVideoRunning(false)} onEnded={() => setVideoRunning(false)} />
+                      <canvas ref={attachOverlay} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button type="button" className="control-button control-button-primary" disabled={busy || !generatedQr} onClick={() => void playScenario(true)}>Scan credential + play</button>
+                      <button type="button" className="control-button control-button-secondary" disabled={busy} onClick={() => void playScenario(false)}>Play without credential</button>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-passflow-faint">
+                      Detection: {typeof peopleResult?.data?.peopleDetected === 'number' ? peopleResult.data.peopleDetected : 0} people · Last inference: {typeof peopleResult?.data?.inferenceMs === 'number' ? `${peopleResult.data.inferenceMs} ms` : 'not run'}
+                    </p>
                   </div>
                 ) : null}
               </div>
@@ -317,6 +382,17 @@ export function DevQrHarness() {
             <div className="rounded-xl border border-passflow-border bg-white px-6">
               <AccessDecision decision={decision} />
             </div>
+            <section className="rounded-xl border border-passflow-border bg-white p-6" aria-labelledby="scenario-guide-heading">
+              <h2 id="scenario-guide-heading" className="text-lg font-semibold text-passflow-ink">Scenario guide</h2>
+              <ul className="mt-3 space-y-2 text-sm leading-5 text-passflow-muted">
+                <li>One or multiple people: select the matching local clip.</li>
+                <li>Several seconds apart: use a clip with spaced crossings.</li>
+                <li>Near door, no crossing: confirm Entrants counted stays at 0.</li>
+                <li>No credential: use Play without credential.</li>
+                <li>Valid credential: generate Valid now, then scan + play.</li>
+                <li>Invalid timing: generate Expired or Not yet valid, then scan + play.</li>
+              </ul>
+            </section>
             <section className="rounded-xl border border-passflow-border bg-white p-6" aria-labelledby="harness-log-heading">
               <h2 id="harness-log-heading" className="text-lg font-semibold text-passflow-ink">Harness events</h2>
               <div aria-live="polite" className="mt-4 space-y-3">
@@ -328,7 +404,7 @@ export function DevQrHarness() {
                     </div>
                     <p className="mt-1 leading-5 text-passflow-muted">{event.detail}</p>
                   </div>
-                )) : <p className="text-sm leading-6 text-passflow-muted">No QR frames processed yet.</p>}
+                )) : <p className="text-sm leading-6 text-passflow-muted">No credential or entrance events processed yet.</p>}
               </div>
             </section>
           </aside>
