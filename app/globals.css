@@ -35,7 +35,7 @@ a:focus-visible {
 
 @layer components {
   .section-label {
-    @apply text-xs font-semibold uppercase tracking-wider text-passflow-muted;
+    @apply text-sm font-semibold text-passflow-muted;
   }
 
   .control-button {

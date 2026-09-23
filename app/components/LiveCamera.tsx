@@ -23,8 +23,7 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError }: LiveCameraPr
 
   return (
     <section aria-labelledby="live-camera-heading" className="min-w-0">
-      <p className="section-label">Live camera</p>
-      <h1 id="live-camera-heading" className="mt-3 text-3xl font-semibold tracking-tight text-passflow-ink sm:text-4xl">
+      <h1 id="live-camera-heading" className="text-3xl font-semibold tracking-tight text-passflow-ink sm:text-4xl">
         Live camera
       </h1>
       <p className="mt-3 text-base text-passflow-muted">

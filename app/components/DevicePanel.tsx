@@ -4,10 +4,9 @@ import { CameraIcon } from './icons'
 interface DevicePanelProps {
   device: RingDevice | null
   status: RingDeviceStatus
-  error: string | null
 }
 
-export function DevicePanel({ device, status, error }: DevicePanelProps) {
+export function DevicePanel({ device, status }: DevicePanelProps) {
   const statusLabel = status === 'loading'
     ? 'Discovering device'
     : device?.online
@@ -48,7 +47,6 @@ export function DevicePanel({ device, status, error }: DevicePanelProps) {
           </div>
         </div>
       </div>
-      {error ? <p className="mt-4 text-sm leading-6 text-passflow-danger">{error}</p> : null}
     </section>
   )
 }

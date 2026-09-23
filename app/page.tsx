@@ -19,7 +19,7 @@ export default function PassFlow() {
         </div>
 
         <aside className="border-t border-passflow-border bg-white px-6 py-10 sm:px-8 lg:border-t-0 lg:px-8 lg:py-12 xl:px-10">
-          <DevicePanel device={device} status={status} error={error} />
+          <DevicePanel device={device} status={status} />
           <FutureState heading="Access Decision" state="Waiting for credential" icon={<LockIcon className="size-5" />} />
           <FutureState heading="Entrants" state="Not analyzing" icon={<EntrantsIcon className="size-5" />} />
         </aside>
