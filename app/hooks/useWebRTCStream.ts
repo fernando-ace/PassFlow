@@ -26,12 +26,24 @@ export function useWebRTCStream({ videoRef, deviceId }: UseWebRTCStreamOptions):
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const sessionUrlRef = useRef<string | null>(null)
   const startingRef = useRef(false)
+  const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const clearConnectionTimeout = useCallback(() => {
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current)
+      connectionTimeoutRef.current = null
+    }
+  }, [])
 
   const closePeerConnection = useCallback(() => {
+    clearConnectionTimeout()
     pcRef.current?.close()
     pcRef.current = null
-    if (videoRef.current) videoRef.current.srcObject = null
-  }, [videoRef])
+    if (videoRef.current) {
+      videoRef.current.onplaying = null
+      videoRef.current.srcObject = null
+    }
+  }, [clearConnectionTimeout, videoRef])
 
   const releaseRingSession = useCallback(async () => {
     const sessionUrl = sessionUrlRef.current
@@ -65,10 +77,14 @@ export function useWebRTCStream({ videoRef, deviceId }: UseWebRTCStreamOptions):
 
       pc.ontrack = (e) => {
         if (videoRef.current && e.streams[0]) {
-          videoRef.current.srcObject = e.streams[0]
-          videoRef.current.play().catch(() => undefined)
-          setStreamActive(true)
-          setStreamStarting(false)
+          const video = videoRef.current
+          video.srcObject = e.streams[0]
+          video.onplaying = () => {
+            clearConnectionTimeout()
+            setStreamActive(true)
+            setStreamStarting(false)
+          }
+          video.play().catch(() => undefined)
         }
       }
 
@@ -78,6 +94,7 @@ export function useWebRTCStream({ videoRef, deviceId }: UseWebRTCStreamOptions):
           setStreamActive(false)
           setStreamStarting(false)
           closePeerConnection()
+          void releaseRingSession()
         }
       }
 
@@ -110,19 +127,28 @@ export function useWebRTCStream({ videoRef, deviceId }: UseWebRTCStreamOptions):
       const { sdpAnswer, sessionUrl } = await res.json()
       sessionUrlRef.current = sessionUrl
       await pc.setRemoteDescription({ type: 'answer', sdp: sdpAnswer })
-      setStreamActive(true)
+
+      connectionTimeoutRef.current = setTimeout(() => {
+        setStreamError(
+          'Ring accepted the live-view session, but no video frames arrived. Confirm the device is online and try again.'
+        )
+        setStreamActive(false)
+        setStreamStarting(false)
+        closePeerConnection()
+        void releaseRingSession()
+      }, 15000)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Stream failed'
       console.error('Stream error:', err)
       setStreamError(message)
       setStreamActive(false)
+      setStreamStarting(false)
       closePeerConnection()
       await releaseRingSession()
     } finally {
       startingRef.current = false
-      setStreamStarting(false)
     }
-  }, [closePeerConnection, deviceId, releaseRingSession, videoRef])
+  }, [clearConnectionTimeout, closePeerConnection, deviceId, releaseRingSession, videoRef])
 
   const stopStream = useCallback(async () => {
     startingRef.current = false

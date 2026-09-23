@@ -27,9 +27,7 @@ export function DevicePanel({ device, status }: DevicePanelProps) {
             {device?.name || (status === 'loading' ? 'Finding your camera' : 'Ring camera')}
           </p>
           {device?.id ? (
-            <p className="mt-1 truncate text-xs text-passflow-faint" title={device.id}>
-              Device {device.id}
-            </p>
+            <p className="mt-1 text-xs text-passflow-faint">Ring camera</p>
           ) : null}
           <div className="mt-3 flex items-center gap-2 text-sm font-medium">
             <span
