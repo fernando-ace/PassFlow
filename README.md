@@ -1,357 +1,174 @@
-# Ring API Hello World
+# PassFlow
 
-Get started with the [Ring Partner API](https://developer.amazon.com/docs/ring/api-documentation.html) — explore device APIs from your terminal and stream live video in your browser.
+PassFlow is a privacy-first visual access-control system for small businesses. It is being built for the Ring track of the Amazon App Dev Challenge.
 
-![Next.js](https://img.shields.io/badge/Next.js-14-black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)
-![Python](https://img.shields.io/badge/Python-3.8+-blue)
+This repository currently covers one focused milestone: use a Ring Developer Playground token to discover an associated Ring device, create a WHEP/WebRTC live-view session, and display the video in a minimal PassFlow interface.
 
-## What's Inside
+PassFlow began from Amazon's official [Ring API Hello World](https://github.com/AmazonAppDev/ring-api-helloworld) sample. The Ring integration remains the authoritative foundation; the product UI and client state are kept separate from the server-side Ring routes.
 
-| Path | What it does | You need |
-|------|-------------|----------|
-| `scripts/` | Python scripts to call Ring APIs from your terminal | Python 3.8+ and a token |
-| `app/` | Next.js web app with live video streaming and real-time event dashboard | Node.js 18+ and a token |
+## Current milestone
 
----
-
-> 🚀 **Coming from the [Ring Developer Playground](https://developer.amazon.com/ring/console/playground)?**
->
-> You already have a token — jump straight to:
-> - **[Explore APIs from your terminal →](#step-2-explore-apis-python-scripts)** (Python, no web app needed)
-> - **[Live stream in your browser →](#step-3-live-video-stream-web-app)** (Node.js, one command)
-
----
-
-## Step 1: Get Your Token
-
-1. Go to the [Ring Developer Playground](https://developer.amazon.com/ring/console/playground)
-2. Click **Generate Token**
-3. Copy the access token
-
-The Playground gives you a short-lived access token (~30 minutes) that works with all Ring APIs. No app registration, OAuth setup, or client credentials needed — just the token.
-
-> **Note:** When the token expires, return to the Playground and generate a fresh one.
-
----
-
-## Step 2: Explore APIs (Python Scripts)
-
-Call any Ring API directly from your terminal. Each script is a self-contained code snippet you can copy into your own project.
-
-### Setup
-
-```bash
-cd scripts
-pip install -r requirements.txt
+```text
+Ring Developer Playground token
+        ↓
+server-side Ring authentication
+        ↓
+Ring device discovery
+        ↓
+WHEP/WebRTC session
+        ↓
+PassFlow live camera
 ```
 
-### Usage
-
-Run the interactive explorer:
-
-```bash
-python explore_apis.py --token "eyJ..."
-```
-
-This shows a menu where you pick which API to call:
-
-```
-=== Ring API Explorer ===
-Use your token to call any Ring API.
-
-1. List Devices
-2. Device Status
-3. Device Capabilities
-4. Device Location
-5. Device Configurations
-6. Event History
-7. User Profile
-8. Run All
-0. Exit
-
-Select an API to call:
-```
-
-Or run individual scripts directly:
-
-```bash
-# List all your devices
-python list_devices.py --token "eyJ..."
-
-# Check if a device is online
-python device_status.py --token "eyJ..." --device-id "ava1.ring.device.XXX"
-
-# Get device capabilities (video codecs, motion detection, etc.)
-python device_capabilities.py --token "eyJ..." --device-id "ava1.ring.device.XXX"
-
-# Get device location (country/state)
-python device_location.py --token "eyJ..." --device-id "ava1.ring.device.XXX"
-
-# Get device configurations (motion zones, privacy zones)
-python device_configurations.py --token "eyJ..." --device-id "ava1.ring.device.XXX"
-
-# Get event history (motion events, doorbell presses, live views)
-python event_history.py --token "eyJ..." --device-id "ava1.ring.device.XXX"
-
-# Get your user profile
-python user_profile.py --token "eyJ..."
-```
-
-> **Tip:** If you don't pass `--device-id`, scripts that need one will auto-discover your first device.
-
-Each script prints the equivalent `curl` command so you can copy it into Postman, your own code, or any HTTP client:
-
-```
-→ GET https://api.amazonvision.com/v1/devices
-  curl -X GET "https://api.amazonvision.com/v1/devices" \
-    -H "Authorization: Bearer $TOKEN"
-```
-
-### Available Scripts
-
-| Script | API Endpoint | Description |
-|--------|-------------|-------------|
-| `list_devices.py` | `GET /v1/devices` | List all accessible devices |
-| `device_status.py` | `GET /v1/devices/{id}/status` | Check if device is online/offline |
-| `device_capabilities.py` | `GET /v1/devices/{id}/capabilities` | Video codecs, motion detection, image enhancements |
-| `device_location.py` | `GET /v1/devices/{id}/location` | Country and state (for compliance) |
-| `device_configurations.py` | `GET /v1/devices/{id}/configurations` | Motion zones, privacy zones, image settings |
-| `event_history.py` | `GET /v1/history/devices/{id}/events` | Past motion, doorbell, and live view events |
-| `user_profile.py` | `GET /v1/users/me` | Your Ring account ID, name, and email |
-| `explore_apis.py` | All of the above | Interactive menu to call any API |
-
----
-
-## Step 3: Live Video Stream (Web App)
-
-Stream live video from a Ring device directly in your browser using WebRTC.
-
-### Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Create your environment file
-cp .env.example .env.local
-```
-
-Edit `.env.local` and paste your token from Step 1:
-
-```env
-RING_ACCESS_TOKEN=eyJ...paste_your_token_here
-```
-
-### Run
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-The app will:
-1. Auto-discover devices associated with your token
-2. Show a **Start Live Stream** button
-3. Click it to begin a WebRTC live video stream from your Ring device
-
-When the token expires, paste a fresh one from the Playground into `.env.local` and restart the server.
-
----
-
-## Advanced: Full Dashboard (Refresh Token Mode)
-
-For production integrations with long-lived sessions, the app supports OAuth refresh tokens with auto-renewal. This mode shows the full dashboard including webhook events, video processors, and canvas overlays.
-
-### Setup
-
-```env
-RING_REFRESH_TOKEN=your_refresh_token_here
-RING_CLIENT_ID=your_client_id_here
-RING_CLIENT_SECRET=your_client_secret_here
-```
-
-All three variables are required. The app automatically refreshes the access token when it expires.
-
-See [Authentication](https://developer.amazon.com/docs/ring/authentication.html) for how to obtain refresh tokens through the OAuth account linking flow, and [Configure Your Ring Application](https://developer.amazon.com/docs/ring/app-registration.html) for how to get your client credentials.
-
-### Device ID (Optional)
-
-```env
-NEXT_PUBLIC_RING_DEVICE_ID=your_device_id_here
-```
-
-If set, the app uses this device directly instead of auto-discovering.
-
-### Important
-
-Do not set both `RING_ACCESS_TOKEN` and `RING_REFRESH_TOKEN` — the app will show a configuration error. Use one or the other.
-
----
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `RING_ACCESS_TOKEN` | Access token from the [Playground](https://developer.amazon.com/ring/console/playground) | Yes (if not using refresh token) |
-| `RING_REFRESH_TOKEN` | OAuth refresh token from [account linking](https://developer.amazon.com/docs/ring/authentication.html) | Yes (if not using access token) |
-| `RING_CLIENT_ID` | OAuth client ID from [app registration](https://developer.amazon.com/docs/ring/app-registration.html) | Yes (only with refresh token) |
-| `RING_CLIENT_SECRET` | OAuth client secret from [app registration](https://developer.amazon.com/docs/ring/app-registration.html) | Yes (only with refresh token) |
-| `NEXT_PUBLIC_RING_DEVICE_ID` | Device ID (skips auto-discovery) | No |
-| `NEXT_PUBLIC_RING_DEVICE_NAME` | Display name for the device | No |
-| `RING_WEBHOOK_SECRET` | Bearer token for [webhook auth](https://developer.amazon.com/docs/ring/notifications.html) | No |
-
----
-
-## Features
-
-### Access Token Mode (Playground)
-- **Live Video Streaming** — WebRTC-based low-latency video from Ring devices
-- **Auto Device Discovery** — Automatically finds devices linked to your token
-- **Simplified UI** — Full-screen live view, no distractions
-
-### Refresh Token Mode (Production)
-- Everything above, plus:
-- **Webhook Events** — Real-time SSE for Ring camera webhooks (motion, doorbell, etc.)
-- **Video Processors** — Plugin system for real-time video analysis
-- **Hand Tracking Game** — Catch-the-box game using MediaPipe hand detection
-- **Canvas Overlays** — Bounding boxes, heatmaps, and visual effects
-
----
+The Access Decision and Entrants areas are intentional placeholders. Credential handling and computer vision are not part of this milestone.
 
 ## Architecture
 
-```
-scripts/
-├── explore_apis.py            # Interactive API explorer
-├── list_devices.py            # GET /v1/devices
-├── device_status.py           # GET /v1/devices/{id}/status
-├── device_capabilities.py     # GET /v1/devices/{id}/capabilities
-├── device_location.py         # GET /v1/devices/{id}/location
-├── device_configurations.py   # GET /v1/devices/{id}/configurations
-├── event_history.py           # GET /v1/history/devices/{id}/events
-├── user_profile.py            # GET /v1/users/me
-└── requirements.txt           # Python dependencies
+- **Next.js 15 App Router + TypeScript** provides the application and API routes.
+- **`lib/auth.ts`** reads Ring credentials only on the server and supports direct Playground access tokens plus optional refresh-token OAuth.
+- **`app/api/ring/devices`** discovers devices and normalizes the Ring response for the UI.
+- **`app/api/ring/stream`** creates and closes Ring WHEP sessions. The access token never enters client code.
+- **`app/hooks/useRingDevice.ts`** manages browser-side discovery state without handling credentials.
+- **`app/hooks/useWebRTCStream.ts`** manages the peer connection, SDP exchange, video attachment, errors, and cleanup.
+- **`lib/video-processors/`** preserves a provider-independent frame-processing registry for later QR/CV work. No processors are active in this milestone.
 
-app/
-├── page.tsx                   # Main dashboard
-├── components/                # UI components
-├── hooks/
-│   ├── useWebRTCStream.ts     # WebRTC connection management
-│   ├── useEventStream.ts      # SSE with auto-reconnect
-│   └── useCanvasOverlay.ts    # Optimized render loop
-└── api/
-    ├── webhook/               # Webhook receiver + SSE endpoint
-    └── ring/                  # Ring API integration
-        ├── config/            # Auth mode detection
-        ├── devices/           # Device discovery + status
-        ├── stream/            # WebRTC WHEP live streaming
-        ├── events/            # Event history
-        └── token/             # Token info
+## Requirements
 
-lib/
-├── auth.ts                    # Token management (access token / refresh token)
-├── video-processors/          # Plugin system for video analysis
-├── schemas/                   # Zod validation schemas
-└── sse-broadcast.ts           # SSE client management
+- Node.js 18 or newer
+- npm
+- A Ring account with an eligible device available to the Ring Developer Playground
+- A current Ring Developer Playground access token
+- A modern browser with WebRTC support
+
+## Install
+
+From PowerShell:
+
+```powershell
+git clone <your-passflow-repository-url> PassFlow
+Set-Location PassFlow
+npm install
+Copy-Item .env.example .env.local
 ```
 
----
+If you already have this project directory, run only:
 
-## Video Processors
-
-Built-in processors (available in refresh token mode):
-
-| Processor | Description |
-|-----------|-------------|
-| 🎯 Catch the Logo | Hand-tracking game with fire effects |
-| 🌡️ Motion Heatmap | Visualizes motion as color overlay |
-| 💡 Brightness Analyzer | Analyzes frame brightness levels |
-
-### Creating Custom Processors
-
-```typescript
-import {VideoProcessor, ProcessorResult} from './types';
-import {processorRegistry} from './registry';
-
-class MyProcessor implements VideoProcessor {
-  id = 'my-processor';
-  name = 'My Processor';
-  description = 'Does something cool';
-  enabled = false;
-
-  async process(
-    frame: ImageData,
-    canvas: HTMLCanvasElement,
-    video: HTMLVideoElement,
-  ): Promise<ProcessorResult | null> {
-    return {
-      id: `my-${Date.now()}`,
-      processorId: this.id,
-      timestamp: Date.now(),
-      data: {},
-      boundingBoxes: [{x: 0, y: 0, width: 100, height: 100, label: 'Detected'}],
-    };
-  }
-}
-
-processorRegistry.register(new MyProcessor());
+```powershell
+npm install
+Copy-Item .env.example .env.local
 ```
 
-See [docs/video-processors.md](docs/video-processors.md) for the complete guide.
+On macOS or Linux, replace the last command with `cp .env.example .env.local`.
 
----
+## Obtain a Ring Developer Playground token
 
-## Webhook Integration
+1. Sign in to the [Ring Developer Playground](https://developer.amazon.com/ring/console/playground).
+2. Generate an access token.
+3. Copy the token immediately; Playground tokens are short-lived.
+4. Open `.env.local` and set:
 
-Available in refresh token mode. The dashboard receives webhook events via POST and broadcasts them to connected clients via SSE.
-
-```bash
-# Send a test event
-curl -X POST http://localhost:3000/api/webhook \
-  -H "Content-Type: application/json" \
-  -d '{"event_type": "motion_detected", "device_id": "camera-1"}'
+```dotenv
+RING_ACCESS_TOKEN=replace_with_your_real_playground_token
 ```
 
-Configure your Ring webhook to POST to `/api/webhook`. Set `RING_WEBHOOK_SECRET` in `.env.local` for authentication.
+Do not prefix the variable with `NEXT_PUBLIC_`. PassFlow reads this value only from server-side code.
 
----
+The tracked `.env.example` contains placeholders only. `.env.local`, `.env`, and `.env.*.local` are ignored by Git.
 
-## API Reference
+## Start PassFlow
 
-For full API documentation:
-- [Ring Partner API Documentation](https://developer.amazon.com/docs/ring/api-documentation.html)
-- [Live Video Streaming (WHEP)](https://developer.amazon.com/docs/ring/live-video.html)
-- [Device Discovery](https://developer.amazon.com/docs/ring/device-discovery.html)
-- [Authentication Guide](https://developer.amazon.com/docs/ring/authentication.html)
-
----
-
-## Tech Stack
-
-- **Scripts**: Python 3.8+ with `requests`
-- **Web App**: Next.js 14 (App Router), TypeScript, Tailwind CSS
-- **Video**: WebRTC (WHEP protocol), MediaPipe Hands
-- **Validation**: Zod
-- **Events**: Server-Sent Events (SSE)
-
----
-
-## Development
-
-```bash
-# Run web app with hot reload
+```powershell
 npm run dev
+```
 
-# Type checking
+Open [http://localhost:3000](http://localhost:3000).
+
+## Verify device discovery
+
+After the page loads:
+
+1. The Ring device area initially displays **Discovering device**.
+2. PassFlow calls its server-side `/api/ring/devices` route.
+3. The first device associated with the token should appear by name.
+4. Its Ring-reported state should display as **Online** or **Offline**.
+
+If no device appears, check the message beside the camera and in the Ring device area. Confirm that the token belongs to the expected Ring account and that the device is available in the Playground.
+
+For a direct local API check while the development server is running:
+
+```powershell
+Invoke-RestMethod http://localhost:3000/api/ring/devices
+```
+
+The response should contain a non-empty `devices` array. It must never contain the access token.
+
+## Start Ring live video
+
+1. Wait for device discovery to finish.
+2. Confirm the selected device is online.
+3. Select **Start Live View**.
+4. PassFlow creates a browser WebRTC offer, sends the SDP to its server-side stream route, and exchanges it with Ring's WHEP endpoint.
+5. When the session is established, the Ring stream appears in the Live camera frame.
+6. Select **Stop Live View** to close the peer connection and Ring session.
+
+Browser autoplay rules are handled by using a muted inline video element. Ring live verification still requires a real token, account, device, and network path.
+
+## Token expiration
+
+Playground tokens expire. When Ring responds with an authorization error, PassFlow reports that the token was rejected instead of silently retrying with invalid credentials.
+
+To recover:
+
+1. Generate a fresh token in the Ring Developer Playground.
+2. Replace `RING_ACCESS_TOKEN` in `.env.local`.
+3. Stop and restart `npm run dev`.
+4. Reload PassFlow and verify discovery again.
+
+Do not configure `RING_ACCESS_TOKEN` and `RING_REFRESH_TOKEN` at the same time.
+
+## Optional refresh-token support
+
+The sample's server-side OAuth refresh flow is preserved for future use:
+
+```dotenv
+# Remove or comment out RING_ACCESS_TOKEN first.
+RING_REFRESH_TOKEN=replace_with_refresh_token
+RING_CLIENT_ID=replace_with_client_id
+RING_CLIENT_SECRET=replace_with_client_secret
+
+# Optional in refresh-token mode:
+# RING_DEVICE_ID=replace_with_device_id
+# RING_DEVICE_NAME=Front Door
+```
+
+Production OAuth and account linking are outside the current milestone.
+
+## Validation
+
+```powershell
 npx tsc --noEmit
-
-# Build for production
 npm run build
 ```
 
----
+## Current limitations
+
+- A live Ring account and device are required for end-to-end stream verification.
+- Playground tokens are short-lived and must be replaced manually.
+- PassFlow currently selects the first discovered device.
+- There is no device picker.
+- Access Decision and Entrants do not perform analysis yet.
+- There is no credential generation, QR recognition, credential validation, person detection, tailgating detection, database, account system, smart-lock control, payment flow, or production deployment.
+- The preserved webhook and processor foundations are not surfaced in the current UI.
+
+## Video-processing extension point
+
+The frame processor contracts and registry are intentionally retained for future work. See [docs/video-processors.md](docs/video-processors.md).
+
+## Next milestone
+
+**Signed visual credentials and QR recognition from Ring video.**
+
+That milestone should build on the existing server-only Ring boundary and preserved video-processing interfaces. It should not begin until this live-view milestone is verified with a real Ring device.
 
 ## License
 
