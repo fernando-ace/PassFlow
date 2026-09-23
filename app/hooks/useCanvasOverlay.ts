@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, RefObject } from 'react'
-import { DetectionEvent } from '../components/EventCard'
+import { DetectionEvent } from '@/lib/types/events'
 import { ProcessorResult } from '@/lib/video-processors/types'
 
 interface UseCanvasOverlayOptions {

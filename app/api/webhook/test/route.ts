@@ -11,7 +11,7 @@ import { broadcastEvent } from '@/lib/sse-broadcast'
  */
 export async function POST(request: NextRequest) {
   const eventType = request.nextUrl.searchParams.get('type') || 'motion_detected'
-  const deviceId = process.env.NEXT_PUBLIC_RING_DEVICE_ID || 'test-device-123'
+  const deviceId = process.env.RING_DEVICE_ID || 'test-device-123'
   
   // Simulate Ring's JSON:API webhook payload
   const timestamp = Date.now()

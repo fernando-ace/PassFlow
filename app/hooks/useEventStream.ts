@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { DetectionEvent } from '../components/EventCard'
+import { DetectionEvent } from '@/lib/types/events'
 
 interface UseEventStreamOptions {
   paused?: boolean

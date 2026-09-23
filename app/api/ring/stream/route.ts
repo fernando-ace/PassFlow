@@ -3,6 +3,15 @@ import { getAccessToken } from '@/lib/auth'
 
 const API_BASE = 'https://api.amazonvision.com'
 
+function isTrustedRingSessionUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.hostname === 'api.amazonvision.com'
+  } catch {
+    return false
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { sdpOffer, deviceId } = await request.json()
@@ -12,10 +21,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Use deviceId from request body, fall back to env var
-    const resolvedDeviceId = deviceId || process.env.NEXT_PUBLIC_RING_DEVICE_ID
+    const resolvedDeviceId = deviceId || process.env.RING_DEVICE_ID
     if (!resolvedDeviceId) {
       return NextResponse.json(
-        { error: 'No device ID provided. Pass deviceId in request body or set NEXT_PUBLIC_RING_DEVICE_ID.' },
+        { error: 'No device ID provided. Pass deviceId in the request body or set RING_DEVICE_ID.' },
         { status: 400 }
       )
     }
@@ -34,8 +43,11 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const error = await response.text()
+      const message = response.status === 401 || response.status === 403
+        ? 'Ring rejected the access token. Generate a fresh Playground token, update .env.local, and restart PassFlow.'
+        : `Ring live view failed with status ${response.status}.`
       return NextResponse.json(
-        { error: `WHEP failed: ${response.status} - ${error}` },
+        { error: `${message} ${error}`.trim() },
         { status: response.status }
       )
     }
@@ -58,6 +70,10 @@ export async function DELETE(request: NextRequest) {
     const { sessionUrl } = await request.json()
     if (!sessionUrl) {
       return NextResponse.json({ error: 'Missing sessionUrl' }, { status: 400 })
+    }
+
+    if (!isTrustedRingSessionUrl(sessionUrl)) {
+      return NextResponse.json({ error: 'Invalid Ring session URL' }, { status: 400 })
     }
 
     const token = await getAccessToken()

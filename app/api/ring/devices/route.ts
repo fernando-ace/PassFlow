@@ -1,15 +1,33 @@
 import { NextResponse } from 'next/server'
 import { getAccessToken } from '@/lib/auth'
 
-const DEVICE_ID = process.env.NEXT_PUBLIC_RING_DEVICE_ID
-const DEVICE_NAME = process.env.NEXT_PUBLIC_RING_DEVICE_NAME || 'Camera'
+const DEVICE_ID = process.env.RING_DEVICE_ID
+const DEVICE_NAME = process.env.RING_DEVICE_NAME || 'Ring camera'
 const API_BASE = 'https://api.amazonvision.com'
+
+interface RingApiDevice {
+  id: string
+  attributes?: {
+    name?: string
+    description?: string
+    online?: boolean
+    capabilities?: Record<string, unknown>
+  }
+}
+
+function getDiscoveryError(status: number) {
+  if (status === 401 || status === 403) {
+    return 'Ring rejected the access token. Generate a fresh Playground token, update .env.local, and restart PassFlow.'
+  }
+
+  return `Ring device discovery failed with status ${status}.`
+}
 
 export async function GET() {
   try {
     const token = await getAccessToken()
 
-    // In access token mode, always auto-discover (ignore NEXT_PUBLIC_RING_DEVICE_ID)
+    // In access token mode, always auto-discover (ignore configured device ID).
     const isAccessTokenMode = !!process.env.RING_ACCESS_TOKEN
     const useConfiguredDevice = DEVICE_ID && !isAccessTokenMode
 
@@ -43,7 +61,7 @@ export async function GET() {
     if (!res.ok) {
       const error = await res.text()
       return NextResponse.json(
-        { devices: [], error: `Device discovery failed: ${res.status} - ${error}` },
+        { devices: [], error: `${getDiscoveryError(res.status)} ${error}`.trim() },
         { status: res.status }
       )
     }
@@ -51,7 +69,7 @@ export async function GET() {
     const data = await res.json()
 
     // Normalize JSON:API response to simple device list
-    const devices = (data?.data || []).map((device: any) => ({
+    const devices = (data?.data || []).map((device: RingApiDevice) => ({
       id: device.id,
       name: device.attributes?.name || device.attributes?.description || 'Ring Device',
       online: device.attributes?.online || false,
