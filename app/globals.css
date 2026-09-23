@@ -28,7 +28,10 @@ body {
 button, input, textarea, select { font: inherit; }
 
 button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgb(var(--passflow-accent) / 0.32);
   outline-offset: 3px;
 }
@@ -48,6 +51,14 @@ a:focus-visible {
 
   .control-button-secondary {
     @apply border border-passflow-border bg-white text-passflow-ink hover:bg-passflow-soft;
+  }
+
+  .form-label {
+    @apply mb-2 block text-sm font-semibold text-passflow-ink;
+  }
+
+  .form-control {
+    @apply min-h-12 w-full rounded-lg border border-passflow-border bg-white px-3.5 text-sm text-passflow-ink outline-none transition-colors placeholder:text-passflow-faint hover:border-passflow-faint focus:border-passflow-accent;
   }
 }
 

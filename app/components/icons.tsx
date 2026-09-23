@@ -55,11 +55,27 @@ export function LockIcon(props: IconProps) {
   )
 }
 
-export function EntrantsIcon(props: IconProps) {
+export function CheckIcon(props: IconProps) {
   return (
     <svg {...sharedProps} {...props}>
-      <circle cx="9" cy="8" r="3" />
-      <path d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19M16 5.5a3 3 0 0 1 0 5.8M16.5 14a4.8 4.8 0 0 1 4 4.7" />
+      <path d="m5 12.5 4.2 4L19 7" />
+    </svg>
+  )
+}
+
+export function XIcon(props: IconProps) {
+  return (
+    <svg {...sharedProps} {...props}>
+      <path d="m7 7 10 10M17 7 7 17" />
+    </svg>
+  )
+}
+
+export function ClockIcon(props: IconProps) {
+  return (
+    <svg {...sharedProps} {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
     </svg>
   )
 }

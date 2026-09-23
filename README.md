@@ -2,7 +2,7 @@
 
 PassFlow is a privacy-first visual access-control system for small businesses. It is being built for the Ring track of the Amazon App Dev Challenge.
 
-This repository currently covers one focused milestone: use a Ring Developer Playground token to discover an associated Ring device, create a WHEP/WebRTC live-view session, and display the video in a minimal PassFlow interface.
+This repository covers a focused visual-credential flow: connect to a Ring live-view session, create a signed temporary pass, recognize its QR value in sampled video frames, and verify the credential on the server.
 
 PassFlow began from Amazon's official [Ring API Hello World](https://github.com/AmazonAppDev/ring-api-helloworld) sample. The Ring integration remains the authoritative foundation; the product UI and client state are kept separate from the server-side Ring routes.
 
@@ -18,9 +18,13 @@ Ring device discovery
 WHEP/WebRTC session
         ↓
 PassFlow live camera
+        ↓
+browser-side QR recognition
+        ↓
+server-side signature and validity verification
 ```
 
-The Access Decision and Entrants areas are intentional placeholders. Credential handling and computer vision are not part of this milestone.
+The QR contains only a signed PassFlow token. The signing secret and all trust decisions remain server-side. Person detection, identity recognition, entrants, tailgating analysis, and lock control are intentionally outside this milestone.
 
 ## Architecture
 
@@ -30,7 +34,9 @@ The Access Decision and Entrants areas are intentional placeholders. Credential 
 - **`app/api/ring/stream`** creates and closes Ring WHEP sessions. The access token never enters client code.
 - **`app/hooks/useRingDevice.ts`** manages browser-side discovery state without handling credentials.
 - **`app/hooks/useWebRTCStream.ts`** manages the peer connection, SDP exchange, video attachment, errors, and cleanup.
-- **`lib/video-processors/`** preserves a provider-independent frame-processing registry for later QR/CV work. No processors are active in this milestone.
+- **`lib/credentials/`** creates and verifies versioned HMAC-SHA256 credentials with explicit validity windows.
+- **`app/api/credentials`** creates signed credentials; **`app/api/credentials/verify`** returns one of five explicit verification statuses.
+- **`lib/video-processors/qrCredentialProcessor.ts`** samples live video at 2 FPS, decodes QR values locally, and debounces duplicate detections before verification.
 
 ## Requirements
 
@@ -69,9 +75,14 @@ On macOS or Linux, replace the last command with `cp .env.example .env.local`.
 
 ```dotenv
 RING_ACCESS_TOKEN=replace_with_your_real_playground_token
+PASSFLOW_SIGNING_SECRET=replace_with_a_random_secret_of_at_least_32_characters
 ```
 
-Do not prefix the variable with `NEXT_PUBLIC_`. PassFlow reads this value only from server-side code.
+Do not prefix either variable with `NEXT_PUBLIC_`. PassFlow reads both values only from server-side code. You can generate a signing secret with:
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
 
 The tracked `.env.example` contains placeholders only. `.env.local`, `.env`, and `.env.*.local` are ignored by Git.
 
@@ -147,8 +158,11 @@ Production OAuth and account linking are outside the current milestone.
 
 ```powershell
 npx tsc --noEmit
+npm run check:credentials
 npm run build
 ```
+
+`check:credentials` requires the development server to be running with `PASSFLOW_SIGNING_SECRET` configured. It verifies QR encode/decode plus valid, expired, not-yet-valid, malformed, and invalid-signature results.
 
 ## Current limitations
 
@@ -156,19 +170,18 @@ npm run build
 - Playground tokens are short-lived and must be replaced manually.
 - PassFlow currently selects the first discovered device.
 - There is no device picker.
-- Access Decision and Entrants do not perform analysis yet.
-- There is no credential generation, QR recognition, credential validation, person detection, tailgating detection, database, account system, smart-lock control, payment flow, or production deployment.
-- The preserved webhook and processor foundations are not surfaced in the current UI.
+- Playground video is prerecorded, so the generated QR cannot be physically presented to that synthetic feed. Final camera-in-the-loop acceptance requires a real Ring camera pointed at the displayed pass.
+- There is no person detection, tailgating detection, database, account system, smart-lock control, payment flow, or production deployment.
 
 ## Video-processing extension point
 
 The frame processor contracts and registry are intentionally retained for future work. See [docs/video-processors.md](docs/video-processors.md).
 
-## Next milestone
+## Exact next milestone
 
-**Signed visual credentials and QR recognition from Ring video.**
+**Camera-in-the-loop credential acceptance with a physical Ring device.**
 
-That milestone should build on the existing server-only Ring boundary and preserved video-processing interfaces. It should not begin until this live-view milestone is verified with a real Ring device.
+Display a generated PassFlow QR to a real Ring camera and confirm the complete create → recognize → securely verify → granted/denied path. Do not begin person detection until that acceptance test passes.
 
 ## License
 

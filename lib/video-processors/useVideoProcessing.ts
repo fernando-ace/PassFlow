@@ -24,7 +24,6 @@ export function useVideoProcessing({
   const [displayResults, setDisplayResults] = useState<Map<string, ProcessorResult>>(new Map())
   const [processors, setProcessors] = useState<VideoProcessor[]>([])
 
-  const processingRef = useRef(false)
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const resultsRef = useRef<Map<string, ProcessorResult>>(new Map())
 
@@ -54,28 +53,32 @@ export function useVideoProcessing({
   // Main processing loop
   useEffect(() => {
     if (!enabled || !video || !canvas) {
-      processingRef.current = false
       return
     }
 
-    processingRef.current = true
     const frameCanvas = frameCanvasRef.current!
     const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true })!
     const interval = 1000 / fps
 
     let lastTime = 0
+    let cancelled = false
+    let animationId = 0
+
+    const queueNextFrame = () => {
+      if (!cancelled) animationId = requestAnimationFrame(processFrame)
+    }
 
     const processFrame = async (timestamp: number) => {
-      if (!processingRef.current) return
+      if (cancelled) return
 
       if (timestamp - lastTime < interval) {
-        requestAnimationFrame(processFrame)
+        queueNextFrame()
         return
       }
       lastTime = timestamp
 
       if (video.readyState < 2 || video.paused) {
-        requestAnimationFrame(processFrame)
+        queueNextFrame()
         return
       }
 
@@ -100,13 +103,14 @@ export function useVideoProcessing({
         }
       }
 
-      requestAnimationFrame(processFrame)
+      queueNextFrame()
     }
 
-    requestAnimationFrame(processFrame)
+    animationId = requestAnimationFrame(processFrame)
 
     return () => {
-      processingRef.current = false
+      cancelled = true
+      cancelAnimationFrame(animationId)
     }
   }, [enabled, video, canvas, fps])
 

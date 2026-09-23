@@ -12,8 +12,7 @@ interface UseCanvasOverlayOptions {
 }
 
 /**
- * Draws generic bounding boxes from Ring events and future PassFlow processors.
- * The UI does not activate this pipeline until a later QR/CV milestone.
+ * Draws generic bounding boxes from Ring events and PassFlow processors.
  */
 export function useCanvasOverlay({ videoRef, canvasRef, events, results }: UseCanvasOverlayOptions) {
   const eventsRef = useRef(events)

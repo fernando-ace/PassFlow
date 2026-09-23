@@ -1,6 +1,6 @@
 # PassFlow video-processing architecture
 
-PassFlow retains the Ring sample's browser-side processor registry as an extension point for later QR and computer-vision milestones. No processor is registered or active in the current live-view milestone.
+PassFlow uses the Ring sample's browser-side processor registry for credential QR recognition while preserving a clean extension boundary for later computer-vision milestones.
 
 ## Boundaries
 
@@ -44,9 +44,11 @@ interface ProcessorResult {
 }
 ```
 
-## Registering a future processor
+## Registered credential processor
 
-Create an implementation and register it through the existing registry:
+`QrCredentialProcessor` is registered when the live-camera component mounts. It samples frames at 2 FPS, runs `jsQR` locally, returns a token and bounding box, and suppresses repeated values for eight seconds. The access-decision workflow then sends the token to the server verification route; the signing secret never enters this processor or the browser.
+
+Future processors can use the same registry:
 
 ```typescript
 import type { ProcessorResult, VideoProcessor } from '@/lib/video-processors'
@@ -80,8 +82,8 @@ Do not register placeholder processors merely to populate the UI. Add a processo
 
 ## Current state
 
-The registry, types, processing hook, and generic overlay hook are present. Demo games, sample analyzers, and ML dependencies from the original sample were removed to keep this milestone focused and dependency-light.
+The registry, types, processing hook, QR credential processor, and generic overlay hook are active. Demo games, sample analyzers, and ML dependencies from the original sample were removed to keep this milestone focused and dependency-light.
 
 The next intended use of this architecture is:
 
-**Signed visual credentials and QR recognition from Ring video.**
+**Camera-in-the-loop credential acceptance with a physical Ring device.**
