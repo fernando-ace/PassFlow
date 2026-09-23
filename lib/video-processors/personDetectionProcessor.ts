@@ -1,5 +1,7 @@
 import { processorRegistry } from './registry'
 import type { BoundingBox, ProcessorResult, VideoProcessor } from './types'
+import { ENTRANCE_CONFIG } from '@/lib/entrance/config.mjs'
+import { DoorwayTracker } from '@/lib/entrance/trackerCore.mjs'
 
 export const PERSON_DETECTION_PROCESSOR_ID = 'passflow-person-detection'
 
@@ -47,6 +49,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
   private readonly minimumInferenceIntervalMs: number
   private readonly now: () => number
   private readonly loadModelOverride?: LoadCocoModel
+  private readonly tracker = new DoorwayTracker()
 
   constructor(options: PersonDetectionProcessorOptions = {}) {
     this.minimumConfidence = options.minimumConfidence ?? PERSON_DETECTION_CONFIG.minimumConfidence
@@ -80,7 +83,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
     const people = predictions.filter((prediction) => (
       prediction.class === 'person' && prediction.score >= this.minimumConfidence
     ))
-    const boundingBoxes: BoundingBox[] = people.map((prediction) => ({
+    const detections: BoundingBox[] = people.map((prediction) => ({
       x: prediction.bbox[0],
       y: prediction.bbox[1],
       width: prediction.bbox[2],
@@ -89,14 +92,49 @@ export class PersonDetectionProcessor implements VideoProcessor {
       confidence: prediction.score,
       color: '#0d9488',
     }))
+    const tracking = this.tracker.update(detections, now, {
+      width: frame.width,
+      height: frame.height,
+    })
+    const boundingBoxes: BoundingBox[] = tracking.tracks.map((track) => ({
+      ...track.bbox,
+      label: `Person #${track.id}`,
+      confidence: track.confidence,
+      color: track.entered ? '#059669' : '#0d9488',
+    }))
+    const boundaryPosition = ENTRANCE_CONFIG.boundary.orientation === 'horizontal'
+      ? frame.height * ENTRANCE_CONFIG.boundary.positionRatio
+      : frame.width * ENTRANCE_CONFIG.boundary.positionRatio
+    const overlayLines = ENTRANCE_CONFIG.boundary.orientation === 'horizontal'
+      ? [{
+          x1: 0,
+          y1: boundaryPosition,
+          x2: frame.width,
+          y2: boundaryPosition,
+          label: 'Entrance boundary',
+          color: '#f59e0b',
+          dashed: true,
+        }]
+      : [{
+          x1: boundaryPosition,
+          y1: 0,
+          x2: boundaryPosition,
+          y2: frame.height,
+          label: 'Entrance boundary',
+          color: '#f59e0b',
+          dashed: true,
+        }]
 
     return {
       id: `${this.id}-${now}`,
       processorId: this.id,
       timestamp: now,
       boundingBoxes,
+      overlayLines,
       data: {
-        peopleDetected: boundingBoxes.length,
+        peopleDetected: people.length,
+        tracks: tracking.tracks,
+        crossings: tracking.crossings,
         inferenceMs: Math.round(performance.now() - startedAt),
       },
       message: boundingBoxes.length === 1
@@ -109,6 +147,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
     await this.initialization
     this.model?.dispose()
     this.model = null
+    this.tracker.reset()
     this.lastInferenceAt = Number.NEGATIVE_INFINITY
   }
 

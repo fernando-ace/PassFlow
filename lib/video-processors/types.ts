@@ -15,6 +15,16 @@ export interface BoundingBox {
   color?: string
 }
 
+export interface OverlayLine {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  label?: string
+  color?: string
+  dashed?: boolean
+}
+
 export interface ProcessorResult {
   /** Unique ID for this result */
   id: string
@@ -24,6 +34,8 @@ export interface ProcessorResult {
   timestamp: number
   /** Bounding boxes to draw on video */
   boundingBoxes?: BoundingBox[]
+  /** Lines to draw on video, such as a calibrated entrance boundary */
+  overlayLines?: OverlayLine[]
   /** Key-value data to display in the UI */
   data?: Record<string, unknown>
   /** Optional message/label to show */

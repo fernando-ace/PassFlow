@@ -54,6 +54,26 @@ export function useCanvasOverlay({ videoRef, canvasRef, events, results }: UseCa
       const processorBoxes = Array.from(resultsRef.current.values())
         .flatMap((result) => result.boundingBoxes || [])
 
+      const processorLines = Array.from(resultsRef.current.values())
+        .flatMap((result) => result.overlayLines || [])
+
+      for (const line of processorLines) {
+        context.save()
+        context.strokeStyle = line.color || '#f59e0b'
+        context.fillStyle = context.strokeStyle
+        context.lineWidth = 2
+        context.setLineDash(line.dashed ? [8, 6] : [])
+        context.beginPath()
+        context.moveTo(line.x1 * scaleX, line.y1 * scaleY)
+        context.lineTo(line.x2 * scaleX, line.y2 * scaleY)
+        context.stroke()
+        if (line.label) {
+          context.font = '12px ui-monospace, monospace'
+          context.fillText(line.label, line.x1 * scaleX + 6, line.y1 * scaleY - 7)
+        }
+        context.restore()
+      }
+
       for (const box of [...eventBoxes, ...processorBoxes]) {
         context.strokeStyle = box.color || '#0d9488'
         context.lineWidth = 2
