@@ -19,7 +19,7 @@ export function useVideoProcessing({
   video,
   canvas,
   enabled,
-  fps = 10,
+  fps = 2,
 }: UseVideoProcessingOptions) {
   const [displayResults, setDisplayResults] = useState<Map<string, ProcessorResult>>(new Map())
   const [processors, setProcessors] = useState<VideoProcessor[]>([])
@@ -37,7 +37,14 @@ export function useVideoProcessing({
   // Create offscreen canvas for frame capture
   useEffect(() => {
     frameCanvasRef.current = document.createElement('canvas')
+    return () => { frameCanvasRef.current = null }
   }, [])
+
+  useEffect(() => {
+    if (enabled) return
+    resultsRef.current.clear()
+    setDisplayResults(new Map())
+  }, [enabled])
 
   // Batch UI updates at 2Hz to reduce re-renders
   useEffect(() => {
@@ -56,9 +63,11 @@ export function useVideoProcessing({
       return
     }
 
-    const frameCanvas = frameCanvasRef.current!
-    const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true })!
+    const frameCanvas = frameCanvasRef.current
+    const frameCtx = frameCanvas?.getContext('2d', { willReadFrequently: true })
+    if (!frameCanvas || !frameCtx) return
     const interval = 1000 / fps
+    const activeProcessors = processors.filter((processor) => processor.enabled)
 
     let lastTime = 0
     let cancelled = false
@@ -90,11 +99,10 @@ export function useVideoProcessing({
       const frame = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height)
 
       // Run enabled processors
-      const enabledProcessors = processorRegistry.getEnabled()
-
-      for (const processor of enabledProcessors) {
+      for (const processor of activeProcessors) {
         try {
           const result = await processor.process(frame, canvas, video)
+          if (cancelled) return
           if (result) {
             resultsRef.current.set(processor.id, result)
           }
@@ -106,13 +114,22 @@ export function useVideoProcessing({
       queueNextFrame()
     }
 
-    animationId = requestAnimationFrame(processFrame)
+    void Promise.all(activeProcessors.map((processor) => processor.init?.()))
+      .catch((error) => {
+        console.error('Video processor initialization failed:', error)
+      })
+      .finally(() => {
+        if (!cancelled) animationId = requestAnimationFrame(processFrame)
+      })
 
     return () => {
       cancelled = true
       cancelAnimationFrame(animationId)
+      for (const processor of activeProcessors) {
+        void processor.destroy?.()
+      }
     }
-  }, [enabled, video, canvas, fps])
+  }, [enabled, video, canvas, fps, processors])
 
   const toggleProcessor = useCallback((id: string) => {
     const processor = processorRegistry.get(id)

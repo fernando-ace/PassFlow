@@ -43,14 +43,22 @@ export function CreatePass() {
     setError(null)
 
     try {
+      const startsAt = new Date(validFrom)
+      const endsAt = new Date(validUntil)
+      if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) {
+        throw new Error('Choose a complete validity window.')
+      }
+      if (endsAt <= startsAt) {
+        throw new Error('Valid until must be after valid from.')
+      }
       const response = await fetch('/api/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           displayName,
           location,
-          validFrom: new Date(validFrom).toISOString(),
-          validUntil: new Date(validUntil).toISOString(),
+          validFrom: startsAt.toISOString(),
+          validUntil: endsAt.toISOString(),
         }),
       })
       const result = await response.json()
@@ -79,8 +87,8 @@ export function CreatePass() {
         <p className="mt-2 text-sm leading-6 text-passflow-muted">Generate a signed QR credential for one visitor and one door.</p>
       </div>
 
-      <div className="mt-6 grid gap-8 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <form onSubmit={createPass} className="grid content-start gap-5 sm:grid-cols-2">
+      <div className="mt-6 grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <form onSubmit={createPass} aria-busy={submitting} className="grid content-start gap-5 sm:grid-cols-2">
           <label className="sm:col-span-2">
             <span className="form-label">Visitor name</span>
             <input
@@ -94,13 +102,17 @@ export function CreatePass() {
           </label>
           <label className="sm:col-span-2">
             <span className="form-label">Door or location</span>
-            <input
+            <select
               required
-              maxLength={80}
               value={location}
               onChange={(event) => setLocation(event.target.value)}
               className="form-control"
-            />
+            >
+              <option>Front door</option>
+              <option>Side entrance</option>
+              <option>Reception</option>
+              <option>Loading entrance</option>
+            </select>
           </label>
           <label>
             <span className="form-label">Valid from</span>
@@ -108,23 +120,26 @@ export function CreatePass() {
           </label>
           <label>
             <span className="form-label">Valid until</span>
-            <input required type="datetime-local" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} className="form-control" />
+            <input required type="datetime-local" min={validFrom || undefined} value={validUntil} onChange={(event) => setValidUntil(event.target.value)} className="form-control" />
           </label>
           <div className="sm:col-span-2">
             <button type="submit" disabled={submitting || !validFrom || !validUntil} className="control-button control-button-primary">
-              {submitting ? 'Creating pass…' : 'Create signed pass'}
+              {submitting ? 'Generating pass…' : 'Generate signed pass'}
             </button>
             {error ? <p role="alert" className="mt-3 text-sm text-passflow-danger">{error}</p> : null}
           </div>
         </form>
 
-        <div className="min-h-72 rounded-xl border border-passflow-border bg-passflow-soft p-5">
+        <div className="min-h-80 rounded-xl border border-passflow-border bg-passflow-soft p-5">
           {createdPass ? (
             <div className="text-center">
-              <img src={createdPass.qrDataUrl} alt={`QR credential for ${createdPass.credential.displayName}`} className="mx-auto aspect-square w-full max-w-60 rounded-lg bg-white" />
+              <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-passflow-muted">Present this QR</p>
+              <img src={createdPass.qrDataUrl} alt={`QR credential for ${createdPass.credential.displayName}`} className="mx-auto aspect-square w-full max-w-80 rounded-lg bg-white p-2 shadow-sm ring-1 ring-passflow-border" />
               <p className="mt-4 text-base font-semibold text-passflow-ink">{createdPass.credential.displayName}</p>
               <p className="mt-1 text-sm text-passflow-muted">{createdPass.credential.location}</p>
-              <p className="mt-1 text-xs text-passflow-faint">Expires {formatDateTime(createdPass.credential.validUntil)}</p>
+              <p className="mt-1 text-xs leading-5 text-passflow-faint">
+                {formatDateTime(createdPass.credential.validFrom)} – {formatDateTime(createdPass.credential.validUntil)}
+              </p>
             </div>
           ) : (
             <div className="grid h-full min-h-64 place-items-center text-center">

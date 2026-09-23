@@ -1,5 +1,5 @@
-import jsQR from 'jsqr'
 import { processorRegistry } from './registry'
+import { decodeQrFrame } from './qrDecoder.mjs'
 import { QrValueDebouncer } from './qrValueDebouncer.mjs'
 import type { ProcessorResult, VideoProcessor } from './types'
 
@@ -16,37 +16,29 @@ export class QrCredentialProcessor implements VideoProcessor {
   private readonly debouncer = new QrValueDebouncer()
 
   async process(frame: ImageData): Promise<ProcessorResult | null> {
-    const code = jsQR(frame.data, frame.width, frame.height, {
-      inversionAttempts: 'dontInvert',
-    })
-    if (!code || !this.debouncer.shouldProcess(code.data)) return null
-
-    const corners = [
-      code.location.topLeftCorner,
-      code.location.topRightCorner,
-      code.location.bottomRightCorner,
-      code.location.bottomLeftCorner,
-    ]
-    const xValues = corners.map((corner) => corner.x)
-    const yValues = corners.map((corner) => corner.y)
-    const left = Math.min(...xValues)
-    const top = Math.min(...yValues)
+    const decoded = decodeQrFrame(frame)
+    if (!decoded || !this.debouncer.shouldProcess(decoded.value)) return null
 
     return {
       id: `${this.id}-${Date.now()}`,
       processorId: this.id,
       timestamp: Date.now(),
-      data: { token: code.data },
+      data: { token: decoded.value },
       message: 'QR detected',
       boundingBoxes: [{
-        x: left,
-        y: top,
-        width: Math.max(...xValues) - left,
-        height: Math.max(...yValues) - top,
+        ...decoded.boundingBox,
         label: 'Credential',
         color: '#0d9488',
       }],
     }
+  }
+
+  async init() {
+    this.debouncer.reset()
+  }
+
+  async destroy() {
+    this.debouncer.reset()
   }
 }
 

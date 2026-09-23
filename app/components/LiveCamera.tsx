@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AccessDecisionState } from '@/app/types/access'
 import type { RingDeviceStatus } from '@/app/types/ring'
+import { verifyQrCredential } from '@/lib/credentials/verifyQrCredential'
 import { useCanvasOverlay } from '@/app/hooks/useCanvasOverlay'
 import { useWebRTCStream } from '@/app/hooks/useWebRTCStream'
 import {
@@ -65,33 +66,32 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
     lastResultIdRef.current = credentialResultId
     setQrDetected(true)
     const indicatorTimer = window.setTimeout(() => setQrDetected(false), 1800)
-    let cancelled = false
+    const controller = new AbortController()
 
     onDecisionChange({ state: 'checking' })
-    void fetch('/api/credentials/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: credentialToken }),
-    })
-      .then(async (response) => {
-        const verification = await response.json()
-        if (!cancelled) onDecisionChange({ state: 'result', result: verification })
+    void verifyQrCredential(credentialToken, controller.signal)
+      .then((verification) => {
+        if (!controller.signal.aborted) {
+          onDecisionChange({ state: 'result', result: verification })
+        }
       })
-      .catch(() => {
-        if (!cancelled) {
+      .catch((error) => {
+        if (!controller.signal.aborted) {
           onDecisionChange({
             state: 'result',
             result: {
               valid: false,
               status: 'malformed',
-              message: 'PassFlow could not verify this credential. Try again.',
+              message: error instanceof Error
+                ? error.message
+                : 'PassFlow could not verify this credential. Try again.',
             },
           })
         }
       })
 
     return () => {
-      cancelled = true
+      controller.abort()
       window.clearTimeout(indicatorTimer)
     }
   }, [credentialResultId, credentialToken, onDecisionChange])
