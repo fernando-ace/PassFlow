@@ -32,13 +32,5 @@
 export * from './types'
 export { processorRegistry } from './registry'
 
-// Register built-in example processors
-import { motionHeatmapProcessor } from './examples/motion-heatmap'
-import { brightnessAnalyzerProcessor } from './examples/brightness-analyzer'
-import { amazonLogoGame } from './examples/amazon-logo-game'
-import { processorRegistry } from './registry'
-
-// Auto-register example processors
-processorRegistry.register(motionHeatmapProcessor)
-processorRegistry.register(brightnessAnalyzerProcessor)
-processorRegistry.register(amazonLogoGame)
+// PassFlow intentionally ships without active processors in this milestone.
+// Future QR and CV processors can register through the preserved registry.

@@ -25,7 +25,7 @@ export interface ProcessorResult {
   /** Bounding boxes to draw on video */
   boundingBoxes?: BoundingBox[]
   /** Key-value data to display in the UI */
-  data?: Record<string, any>
+  data?: Record<string, unknown>
   /** Optional message/label to show */
   message?: string
 }
