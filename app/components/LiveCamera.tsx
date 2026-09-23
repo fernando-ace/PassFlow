@@ -229,6 +229,20 @@ export function LiveCamera({
           </span>
         ) : null}
 
+        <span className={`absolute bottom-4 left-4 hidden rounded-md bg-black/70 px-3 py-2 text-xs font-semibold sm:inline-flex ${
+          visionState.status === 'ready'
+            ? 'text-emerald-300'
+            : visionState.status === 'error'
+              ? 'text-red-300'
+              : 'text-white'
+        }`}>
+          {visionState.status === 'ready'
+            ? 'Vision ready'
+            : visionState.status === 'error'
+              ? 'Vision unavailable'
+              : 'Loading vision model'}
+        </span>
+
         {streamActive && qrDetected ? (
           <span className="absolute right-4 top-4 rounded-md bg-passflow-success px-3 py-2 text-xs font-semibold text-white shadow-sm">
             Credential detected
@@ -237,7 +251,7 @@ export function LiveCamera({
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <span className={`inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-semibold ${
+        <span className={`inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-semibold sm:hidden ${
           visionState.status === 'ready'
             ? 'bg-passflow-success/10 text-passflow-success'
             : visionState.status === 'error'
