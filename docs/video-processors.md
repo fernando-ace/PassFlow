@@ -49,15 +49,15 @@ interface ProcessorResult {
 
 `QrCredentialProcessor` is registered when the live-camera component mounts. It samples frames at 2 FPS, runs `jsQR` locally, returns a token and bounding box, and suppresses repeated values for eight seconds. The access-decision workflow then sends the token to the server verification route; the signing secret never enters this processor or the browser.
 
-`PersonDetectionProcessor` lazy-loads COCO-SSD's `lite_mobilenet_v2` model and TensorFlow.js WebGL backend only when video processing starts. It:
+`PersonDetectionProcessor` starts warming COCO-SSD's `lite_mobilenet_v2` model and the TensorFlow.js WebGL backend when the live-camera component mounts. It:
 
 - runs inference at no more than 2 FPS;
 - keeps only `person` predictions at or above 0.55 confidence;
 - returns video-pixel bounding boxes, confidence, anonymous track information, crossing events, and inference duration;
-- disposes the model and resets the tracker when processing stops; and
+- resets short-lived tracker state while keeping the model warm across stream stops and access-session resets;
 - never performs face detection, facial recognition, biometric identification, or appearance matching.
 
-COCO-SSD model weights are fetched by the browser on first initialization and are not committed to this repository.
+COCO-SSD model weights are fetched by the browser during the first warm-up and are not committed to this repository. The UI reports **Loading vision model**, **Vision ready**, or a visible retryable failure instead of implying detection is active while the model is unavailable.
 
 Additional processors can use the same registry:
 
@@ -83,7 +83,7 @@ Do not register placeholder processors merely to populate the UI. Add a processo
 
 ## Implementation guidance
 
-- Use `init()` for expensive setup and `destroy()` for cleanup.
+- Use `init()` for expensive setup, `resetSession()` for transient state, and `destroy()` only for final resource cleanup.
 - Keep `process()` bounded; frame sampling runs repeatedly while enabled.
 - Return `null` when there is no meaningful result.
 - Keep model/provider concerns inside the processor implementation.
@@ -95,7 +95,7 @@ Do not register placeholder processors merely to populate the UI. Add a processo
 
 `lib/entrance/trackerCore.mjs` uses greedy IoU and bottom-center distance matching. Tracks expire after three missed frames or two seconds. No appearance embeddings or identifying information are retained.
 
-The entrance calibration lives in `lib/entrance/config.mjs`. The default is a horizontal boundary at 62% of frame height, a 3.5% half-width neutral zone, and positive-axis inbound movement. A track counts once only after moving from the outside side, through or across the neutral zone, to the inside side. Tracks first seen inside, tracks that remain near the boundary, and tracks moving in the reverse direction do not produce entering events.
+The entrance defaults live in `lib/entrance/config.mjs`: a horizontal boundary at 62% of frame height, a 3.5% half-width neutral zone, and positive-axis inbound movement. In development, the opt-in Ring calibration panel can adjust those values along with confidence, sampling rates, and the entry-window duration without changing the defaults. A track counts once only after moving from the outside side, through or across the neutral zone, to the inside side. Tracks first seen inside, tracks that remain near the boundary, and tracks moving in the reverse direction do not produce entering events.
 
 Development overlays show person boxes, confidence, track IDs, and the boundary. Those CV-debug overlays are marked development-only and are hidden from production UI.
 

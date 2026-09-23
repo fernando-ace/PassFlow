@@ -47,7 +47,7 @@ The QR contains only a signed PassFlow token. The signing secret and credential 
 - **`lib/video-processors/qrDecoder.mjs`** is the shared local QR decoder used by both Ring frames and the development harness.
 - **`lib/video-processors/qrCredentialProcessor.ts`** turns decoded values into processor results and applies an 8-second, per-value duplicate cooldown before verification.
 - **`lib/credentials/verifyQrCredential.ts`** classifies non-PassFlow QR values locally and sends signed PassFlow values to the server verification route. Both the Ring path and development harness use it.
-- **`lib/video-processors/personDetectionProcessor.ts`** lazy-loads browser-side COCO-SSD with the WebGL backend, keeps only person predictions at or above the configured confidence, and rate-limits inference to 2 FPS.
+- **`lib/video-processors/personDetectionProcessor.ts`** begins warming browser-side COCO-SSD when the app loads, keeps it warm across stream resets, reports loading/ready/failure state, and rate-limits inference to 2 FPS by default.
 - **`lib/entrance/trackerCore.mjs`** assigns anonymous short-lived track IDs using IoU and bottom-center distance, then emits one entering event when a track crosses the configured boundary in the expected direction.
 - **`lib/access/decisionCore.mjs`** combines verified credentials and crossing events in a configurable 12-second window. The first distinct entrant is authorized; additional entrants trigger possible tailgating; crossings without an active window are unauthorized.
 
@@ -171,6 +171,7 @@ Production OAuth and account linking are outside the current milestone.
 
 ```powershell
 npm test
+npm run check:qr
 npm run check:entrance
 npx tsc --noEmit
 npm run build
@@ -196,6 +197,8 @@ The harness supports:
 - person bounding boxes, confidence, anonymous track IDs, and the calibrated entrance line in development only; and
 - credential-plus-video and no-credential video controls for authorized, tailgating, unauthorized, and no-crossing scenarios.
 
+The main Ring screen also exposes an opt-in development-only calibration panel for the live feed. It adjusts the entrance boundary, crossing direction, neutral-zone width, person confidence, QR/person sampling rates, and credential window without changing production defaults. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered Saturday checklist and the exact values to record.
+
 Static images and video files remain local to the browser. Every video frame passes through the same sampled QR and person processors as Ring video. Every new PassFlow value then passes through the same server verification request used by `LiveCamera`, while person detections pass through the shared tracker, boundary, and access-decision policy.
 
 ## Verification status
@@ -207,7 +210,7 @@ Static images and video files remain local to the browser. Every video frame pas
 - Required credential fields and validity windows are validated.
 - Verification returns distinct `valid`, `expired`, `not-yet-valid`, `malformed`, and `invalid-signature` states.
 - Generated PassFlow QR values and ordinary non-PassFlow QR values decode through the shared decoder.
-- Frame processing runs at 2 FPS, suppresses repeat decisions for the same value for 8 seconds, and resets processor state when processing stops.
+- Frame processing runs at 2 FPS by default, suppresses repeat decisions for the same value for 8 seconds, and resets transient QR/tracker state without discarding the warmed model.
 - Deterministic tests verify directional crossing, non-crossing near-door motion, reverse-motion rejection, duplicate track/count suppression, entry-window expiry, one authorized entrant, a second entrant triggering possible tailgating, and unauthorized entry.
 - The development harness exercises generated QR codes, static QR images, local prerecorded doorway/QR video, non-PassFlow values, and model-based person detections without changing the Ring stream architecture.
 - Ring access tokens and signing secrets remain server-only; no `NEXT_PUBLIC_` secret variables are used.
@@ -245,7 +248,7 @@ The Playground's prerecorded video cannot satisfy this acceptance test, and the 
 8. Present a non-PassFlow QR and a visibly modified/invalid PassFlow QR and confirm both are denied gracefully without exposing tokens or secrets.
 9. Calibrate `lib/entrance/config.mjs` against the real doorway so standing nearby and walking away do not count, while inbound crossings count once.
 10. Repeat with one entrant, two entrants together, two entrants several seconds apart, and an entrant without a valid credential; confirm the three final decision states.
-11. Stop live view and confirm the Ring session, animation loop, frame canvas, pending verification request, model, tracker, and QR debounce state are cleaned up.
+11. Stop live view and confirm the Ring session, animation loop, frame canvas, pending verification request, tracker, and QR debounce state are cleaned up while **Vision ready** remains available for a fast retry.
 12. Record the physical device model, lighting, phone, distance, orientation, model load time, steady inference time, time-to-decision, missed detections, and false detections.
 
 ## Current limitations
@@ -255,7 +258,7 @@ The Playground's prerecorded video cannot satisfy this acceptance test, and the 
 - PassFlow currently selects the first discovered device.
 - There is no device picker.
 - Playground video is prerecorded, so the generated QR cannot be physically presented to that synthetic feed. Final camera-in-the-loop acceptance requires a real Ring camera pointed at the displayed pass.
-- Person detection is heuristic and depends on the browser downloading the COCO-SSD model on first use. The 0.55 confidence threshold, 2 FPS sampling rate, tracker tolerances, and entrance boundary require real-camera calibration.
+- Person detection is heuristic and depends on the browser downloading the COCO-SSD model while the app starts. The 0.55 confidence threshold, 2 FPS sampling rate, tracker tolerances, and entrance boundary require real-camera calibration.
 - There is no database, account system, smart-lock control, payment flow, notification system, facial recognition, or production deployment.
 
 ## Video-processing architecture
