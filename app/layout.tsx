@@ -1,14 +1,14 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'Live Detection Dashboard',
-  description: 'Real-time AI-powered camera detection demo',
+  title: 'PassFlow',
+  description: 'Privacy-first visual access control powered by Ring',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-dash-dark text-slate-200">
+    <html lang="en">
+      <body className="min-h-screen bg-white text-passflow-ink antialiased">
         {children}
       </body>
     </html>
