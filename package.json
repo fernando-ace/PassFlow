@@ -6,7 +6,8 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "check:credentials": "node scripts/verify-credentials.mjs"
+    "check:credentials": "node scripts/verify-credentials.mjs",
+    "check:qr": "node scripts/verify-qr-debounce.mjs"
   },
   "dependencies": {
     "jsqr": "^1.4.0",

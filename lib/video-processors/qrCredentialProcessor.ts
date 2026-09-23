@@ -1,24 +1,11 @@
 import jsQR from 'jsqr'
 import { processorRegistry } from './registry'
+import { QrValueDebouncer } from './qrValueDebouncer.mjs'
 import type { ProcessorResult, VideoProcessor } from './types'
 
+export { QrValueDebouncer } from './qrValueDebouncer.mjs'
+
 export const QR_CREDENTIAL_PROCESSOR_ID = 'passflow-qr-credential'
-
-export class QrValueDebouncer {
-  private lastValue: string | null = null
-  private lastSeenAt = 0
-
-  constructor(private readonly cooldownMs = 8_000) {}
-
-  shouldProcess(value: string, now = Date.now()) {
-    if (value === this.lastValue && now - this.lastSeenAt < this.cooldownMs) {
-      return false
-    }
-    this.lastValue = value
-    this.lastSeenAt = now
-    return true
-  }
-}
 
 export class QrCredentialProcessor implements VideoProcessor {
   id = QR_CREDENTIAL_PROCESSOR_ID

@@ -159,10 +159,13 @@ Production OAuth and account linking are outside the current milestone.
 ```powershell
 npx tsc --noEmit
 npm run check:credentials
+npm run check:qr
 npm run build
 ```
 
 `check:credentials` requires the development server to be running with `PASSFLOW_SIGNING_SECRET` configured. It verifies QR encode/decode plus valid, expired, not-yet-valid, malformed, and invalid-signature results.
+
+`check:qr` verifies duplicate suppression and immediate handling of a different credential without requiring a Ring session.
 
 ## Current limitations
 
