@@ -2,7 +2,7 @@
 
 PassFlow is a privacy-first visual access-control system for small businesses. It is being built for the Ring track of the Amazon App Dev Challenge.
 
-This repository covers a focused visual-credential flow: connect to a Ring live-view session, create a signed temporary pass, recognize its QR value in sampled video frames, and verify the credential on the server.
+This repository covers a focused visual-access flow: connect to a Ring live-view session, verify a signed QR credential, detect and track people locally in sampled video frames, count directional entrance crossings, and classify authorized, possible-tailgating, and unauthorized entry events.
 
 PassFlow began from Amazon's official [Ring API Hello World](https://github.com/AmazonAppDev/ring-api-helloworld) sample. The Ring integration remains the authoritative foundation; the product UI and client state are kept separate from the server-side Ring routes.
 
@@ -22,9 +22,17 @@ PassFlow live camera
 browser-side QR recognition
         ↓
 server-side signature and validity verification
+        ↓
+12-second authorized-entry window
+        ↓
+browser-side person detection and short-term tracking
+        ↓
+directional entrance-boundary crossing
+        ↓
+authorized / possible tailgating / unauthorized
 ```
 
-The QR contains only a signed PassFlow token. The signing secret and all trust decisions remain server-side. Person detection, identity recognition, entrants, tailgating analysis, and lock control are intentionally outside this milestone.
+The QR contains only a signed PassFlow token. The signing secret and credential trust decisions remain server-side. Person detection runs in the browser and returns only person boxes, confidence, anonymous short-lived track IDs, and crossing events. PassFlow does not perform facial recognition, biometric identification, or identity matching.
 
 ## Architecture
 
@@ -39,6 +47,9 @@ The QR contains only a signed PassFlow token. The signing secret and all trust d
 - **`lib/video-processors/qrDecoder.mjs`** is the shared local QR decoder used by both Ring frames and the development harness.
 - **`lib/video-processors/qrCredentialProcessor.ts`** turns decoded values into processor results and applies an 8-second, per-value duplicate cooldown before verification.
 - **`lib/credentials/verifyQrCredential.ts`** classifies non-PassFlow QR values locally and sends signed PassFlow values to the server verification route. Both the Ring path and development harness use it.
+- **`lib/video-processors/personDetectionProcessor.ts`** lazy-loads browser-side COCO-SSD with the WebGL backend, keeps only person predictions at or above the configured confidence, and rate-limits inference to 2 FPS.
+- **`lib/entrance/trackerCore.mjs`** assigns anonymous short-lived track IDs using IoU and bottom-center distance, then emits one entering event when a track crosses the configured boundary in the expected direction.
+- **`lib/access/decisionCore.mjs`** combines verified credentials and crossing events in a configurable 12-second window. The first distinct entrant is authorized; additional entrants trigger possible tailgating; crossings without an active window are unauthorized.
 
 ## Requirements
 
@@ -160,29 +171,32 @@ Production OAuth and account linking are outside the current milestone.
 
 ```powershell
 npm test
+npm run check:entrance
 npx tsc --noEmit
 npm run build
 ```
 
-`npm test` is self-contained and uses a test-only signing secret. It covers credential generation and verification for valid, expired, not-yet-valid, modified-payload, invalid-signature, malformed-token, and missing-field cases. It also exercises the shared QR decoder with PassFlow and non-PassFlow values plus per-credential duplicate suppression and processor reset behavior.
+`npm test` is self-contained and uses a test-only signing secret. In addition to credential and QR coverage, it tests directional crossing, near-boundary motion, reverse motion, duplicate suppression, track expiry, entry-window timing, authorized first entry, possible tailgating on the second entry, and unauthorized entry.
 
-The older `npm run check:credentials` integration check remains available when a development server is running with `PASSFLOW_SIGNING_SECRET` configured. `npm run check:qr` remains as a small standalone debounce smoke check.
+`npm run check:entrance` is a deterministic end-to-end policy check that feeds representative detections through the same tracker, crossing logic, and decision engine used by video processing. The older `npm run check:credentials` integration check remains available when a development server is running with `PASSFLOW_SIGNING_SECRET` configured. `npm run check:qr` remains as a small standalone debounce smoke check.
 
-## Development-only QR harness
+## Development-only credential and entrance harness
 
 Run `npm run dev`, then open [http://localhost:3000/dev/qr-harness](http://localhost:3000/dev/qr-harness).
 
-The harness is available only while `NODE_ENV=development`; production builds return a 404 for this route. It is deliberately separate from `LiveCamera` and never substitutes a webcam, image, mock, or prerecorded file for Ring streaming.
+The harness is available only while `NODE_ENV=development`; production builds return a 404 for this route. It feeds local media into the same processor registry used by `LiveCamera`; it does not replace or verify the Ring stream path.
 
 The harness supports:
 
 - server-generated signed PassFlow QR codes with valid, expired, and not-yet-valid windows;
 - local static PNG, JPEG, and WebP QR images;
-- local prerecorded videos containing stationary or moving QR codes, sampled at 2 FPS;
+- local prerecorded doorway or QR videos, sampled at 2 FPS;
 - generated non-PassFlow QR codes; and
-- an immediate repeated scan that records the first decision and confirms the duplicate is suppressed.
+- an immediate repeated scan that records the first decision and confirms the duplicate is suppressed;
+- person bounding boxes, confidence, anonymous track IDs, and the calibrated entrance line in development only; and
+- credential-plus-video and no-credential video controls for authorized, tailgating, unauthorized, and no-crossing scenarios.
 
-Static images and video files remain local to the browser. Every source passes through the same `QrCredentialProcessor` decoder and duplicate guard as Ring video. Every new PassFlow value then passes through the same server verification request used by `LiveCamera`.
+Static images and video files remain local to the browser. Every video frame passes through the same sampled QR and person processors as Ring video. Every new PassFlow value then passes through the same server verification request used by `LiveCamera`, while person detections pass through the shared tracker, boundary, and access-decision policy.
 
 ## Verification status
 
@@ -194,26 +208,27 @@ Static images and video files remain local to the browser. Every source passes t
 - Verification returns distinct `valid`, `expired`, `not-yet-valid`, `malformed`, and `invalid-signature` states.
 - Generated PassFlow QR values and ordinary non-PassFlow QR values decode through the shared decoder.
 - Frame processing runs at 2 FPS, suppresses repeat decisions for the same value for 8 seconds, and resets processor state when processing stops.
-- The development harness exercises generated QR codes, static QR images, local prerecorded QR video, non-PassFlow values, and repeated detections without changing the Ring stream architecture.
+- Deterministic tests verify directional crossing, non-crossing near-door motion, reverse-motion rejection, duplicate track/count suppression, entry-window expiry, one authorized entrant, a second entrant triggering possible tailgating, and unauthorized entry.
+- The development harness exercises generated QR codes, static QR images, local prerecorded doorway/QR video, non-PassFlow values, and model-based person detections without changing the Ring stream architecture.
 - Ring access tokens and signing secrets remain server-only; no `NEXT_PUBLIC_` secret variables are used.
 
 ### Verified through the development harness
 
-- A generated active PassFlow QR decodes and produces **Access granted** after server verification.
+- A generated active PassFlow QR decodes and produces **CREDENTIAL VERIFIED — WAITING FOR ENTRY** with a visible countdown.
 - Generated expired and not-yet-valid passes produce their explicit denied states.
 - A non-PassFlow QR produces **Invalid credential** without being sent to the credential API.
 - Scanning the same generated credential twice immediately emits one decision and suppresses the duplicate.
 - Local static QR images use the shared decoder and verification flow.
-- Local prerecorded video is sampled by the same 2 FPS processor used for Ring video, including moving QR frames and duplicate suppression.
+- Local prerecorded video is sampled by the same 2 FPS processors used for Ring video. COCO-SSD person results expose confidence and anonymous track boxes; development mode also shows track IDs and the entrance boundary.
 
-These harness checks validate the QR and credential pipeline only. They are not evidence that a physical Ring camera can resolve a phone-displayed QR through its real optics, compression, lighting, motion, WebRTC transport, and stream resolution.
+Model-based prerecorded-video results are heuristic and must be reported separately from deterministic policy tests. Neither is evidence that a physical Ring camera can resolve a phone-displayed QR or reliably detect people through its real optics, viewpoint, compression, lighting, motion, WebRTC transport, and stream resolution.
 
 ### Still unverified: physical Ring camera in the loop
 
 The following acceptance path remains explicitly unverified until a physical Ring device is available:
 
 ```text
-phone QR → Ring camera → Ring WebRTC stream → QR decode → credential verification → GRANTED / DENIED
+phone QR → Ring camera → Ring WebRTC stream → QR verification → person tracking → entrance crossing → access decision
 ```
 
 The Playground's prerecorded video cannot satisfy this acceptance test, and the development harness must not be used as a substitute.
@@ -224,12 +239,14 @@ The Playground's prerecorded video cannot satisfy this acceptance test, and the 
 2. Load PassFlow on a computer, confirm that the intended physical Ring device is discovered, and start its real live view.
 3. On a phone, open PassFlow and generate a currently valid signed pass for the selected door.
 4. Set the phone brightness high enough for the QR to be clear, hold the full QR inside the physical Ring camera view, and vary distance/angle only as needed for focus.
-5. Confirm the QR bounding box appears on the actual Ring WebRTC video and that the UI changes once to **Access granted** with the correct visitor and location.
+5. Confirm the QR is verified and the UI changes to **CREDENTIAL VERIFIED — WAITING FOR ENTRY** with the correct visitor and location.
 6. Keep the same QR in view and confirm the 8-second duplicate cooldown prevents a decision on every sampled frame; after the cooldown, confirm a deliberate rescan can be processed again.
 7. Repeat with generated expired and not-yet-valid passes and confirm the explicit **Expired** and **Not yet valid** denied states.
 8. Present a non-PassFlow QR and a visibly modified/invalid PassFlow QR and confirm both are denied gracefully without exposing tokens or secrets.
-9. Stop live view and confirm the Ring session, animation loop, frame canvas, pending verification request, and processor debounce state are cleaned up.
-10. Record the physical device model, lighting, phone, distance, orientation, time-to-decision, and any decode failures. Only after these checks pass should the camera-in-the-loop milestone be marked verified.
+9. Calibrate `lib/entrance/config.mjs` against the real doorway so standing nearby and walking away do not count, while inbound crossings count once.
+10. Repeat with one entrant, two entrants together, two entrants several seconds apart, and an entrant without a valid credential; confirm the three final decision states.
+11. Stop live view and confirm the Ring session, animation loop, frame canvas, pending verification request, model, tracker, and QR debounce state are cleaned up.
+12. Record the physical device model, lighting, phone, distance, orientation, model load time, steady inference time, time-to-decision, missed detections, and false detections.
 
 ## Current limitations
 
@@ -238,17 +255,18 @@ The Playground's prerecorded video cannot satisfy this acceptance test, and the 
 - PassFlow currently selects the first discovered device.
 - There is no device picker.
 - Playground video is prerecorded, so the generated QR cannot be physically presented to that synthetic feed. Final camera-in-the-loop acceptance requires a real Ring camera pointed at the displayed pass.
-- There is no person detection, tailgating detection, database, account system, smart-lock control, payment flow, or production deployment.
+- Person detection is heuristic and depends on the browser downloading the COCO-SSD model on first use. The 0.55 confidence threshold, 2 FPS sampling rate, tracker tolerances, and entrance boundary require real-camera calibration.
+- There is no database, account system, smart-lock control, payment flow, notification system, facial recognition, or production deployment.
 
-## Video-processing extension point
+## Video-processing architecture
 
-The frame processor contracts and registry are intentionally retained for future work. See [docs/video-processors.md](docs/video-processors.md).
+The QR and person processors share one frame-sampling registry so development video and Ring video consume the same CV modules. See [docs/video-processors.md](docs/video-processors.md).
 
-## Exact next milestone
+## Next required validation (not completed here)
 
-**Camera-in-the-loop credential acceptance with a physical Ring device.**
+**Physical Ring camera calibration and camera-in-the-loop acceptance.**
 
-Display a generated PassFlow QR on a phone to a real Ring camera and confirm the complete create → Ring WebRTC → recognize → securely verify → granted/denied path. Do not begin person detection or anti-tailgating work until that acceptance test passes.
+Display a generated PassFlow QR on a phone, run real entrants through the doorway, calibrate the boundary, and confirm the complete Ring WebRTC → QR verification → person detection → tracked crossing → access-decision path. Until that physical test is complete, the Ring path remains explicitly unverified.
 
 ## License
 

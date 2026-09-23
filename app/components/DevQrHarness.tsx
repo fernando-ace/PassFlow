@@ -296,6 +296,8 @@ export function DevQrHarness() {
       resetDecision()
       videoRef.current.pause()
       videoRef.current.currentTime = 0
+      const personProcessor = processorRegistry.get(PERSON_DETECTION_PROCESSOR_ID)
+      await personProcessor?.init?.()
       if (withCredential) {
         if (!generatedQr) throw new Error('Generate a signed credential first.')
         await processor.init()
@@ -371,6 +373,11 @@ export function DevQrHarness() {
                     </div>
                     <p className="mt-3 text-xs leading-5 text-passflow-faint">
                       Detection: {typeof peopleResult?.data?.peopleDetected === 'number' ? peopleResult.data.peopleDetected : 0} people · Last inference: {typeof peopleResult?.data?.inferenceMs === 'number' ? `${peopleResult.data.inferenceMs} ms` : 'not run'}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-passflow-faint">
+                      Track anchors: {Array.isArray(peopleResult?.data?.tracks) && peopleResult.data.tracks.length
+                        ? peopleResult.data.tracks.map((track) => `#${track.id} (${Math.round(track.anchor.x)}, ${Math.round(track.anchor.y)})`).join(' · ')
+                        : 'none'}
                     </p>
                   </div>
                 ) : null}
