@@ -14,6 +14,23 @@ export interface AccessCredentialState {
   details?: PassCredential | null
 }
 
+export type AccessEventType =
+  | 'credential-verified'
+  | 'credential-rejected'
+  | 'entry-window-opened'
+  | 'entrant-counted'
+  | 'authorized-entry'
+  | 'unauthorized-entry'
+  | 'possible-tailgating'
+
+export interface AccessEvent {
+  id: string
+  type: AccessEventType
+  timestamp: number
+  label: string
+  visitorName?: string
+}
+
 export interface AccessDecisionState {
   outcome: AccessOutcome
   credential: AccessCredentialState
@@ -24,4 +41,5 @@ export interface AccessDecisionState {
   entrantsCounted: number
   peopleDetected: number
   lastEventAt: number | null
+  events: AccessEvent[]
 }

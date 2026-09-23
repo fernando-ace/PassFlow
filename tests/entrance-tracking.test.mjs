@@ -68,3 +68,25 @@ test('expires a missing track instead of reusing it indefinitely', () => {
   assert.equal(result.crossings.length, 0)
   assert.equal(result.tracks[0].id, 2)
 })
+
+test('applies a calibrated reverse crossing direction after resetting tracks', () => {
+  const tracker = new DoorwayTracker()
+  tracker.configure({
+    boundary: {
+      orientation: 'horizontal',
+      positionRatio: 0.5,
+      zoneHalfWidthRatio: 0.02,
+      enteringDirection: 'negative',
+    },
+    tracking: {
+      minimumIou: 0.1,
+      maximumCentroidDistanceRatio: 0.18,
+      maximumMissingFrames: 3,
+      maximumMissingMs: 2_000,
+    },
+  })
+  tracker.update([person(650)], 0, frame)
+  const result = tracker.update([person(430)], 500, frame)
+
+  assert.equal(result.crossings.length, 1)
+})

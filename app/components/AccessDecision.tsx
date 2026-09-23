@@ -3,6 +3,7 @@ import { CheckIcon, ClockIcon, LockIcon, XIcon } from './icons'
 
 interface AccessDecisionProps {
   decision: AccessDecisionState
+  onReset?: () => void
 }
 
 const TITLES: Record<AccessDecisionState['outcome'], string> = {
@@ -35,7 +36,7 @@ function decisionMessage(decision: AccessDecisionState) {
   return decision.credential.message
 }
 
-export function AccessDecision({ decision }: AccessDecisionProps) {
+export function AccessDecision({ decision, onReset }: AccessDecisionProps) {
   const authorized = decision.outcome === 'authorized-entry'
   const tailgating = decision.outcome === 'possible-tailgating'
   const unauthorized = decision.outcome === 'unauthorized-entry'
@@ -114,6 +115,11 @@ export function AccessDecision({ decision }: AccessDecisionProps) {
             <dd className="text-right font-semibold tabular-nums text-passflow-ink">{decision.entrantsCounted}</dd>
           </div>
         </dl>
+        {onReset ? (
+          <button type="button" onClick={onReset} className="control-button control-button-secondary mt-5 w-full">
+            Reset access session
+          </button>
+        ) : null}
       </div>
     </section>
   )

@@ -54,6 +54,10 @@ export function useAccessDecision() {
     setDecision(engine.reset() as AccessDecisionState)
   }, [engine])
 
+  const setEntryWindowMs = useCallback((durationMs: number) => {
+    setDecision(engine.setEntryWindowMs(durationMs) as AccessDecisionState)
+  }, [engine])
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       setDecision((current) => (
@@ -69,5 +73,6 @@ export function useAccessDecision() {
     credentialVerified,
     processPeopleResult,
     resetDecision,
+    setEntryWindowMs,
   }
 }

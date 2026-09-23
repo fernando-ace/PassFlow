@@ -14,6 +14,7 @@ interface UseVideoProcessingOptions {
 /**
  * Manages video frame processing pipeline.
  * Batches state updates to reduce re-renders (updates UI at 2Hz, processes at target FPS).
+ * Processor resources outlive an individual stream so expensive models stay warm.
  */
 export function useVideoProcessing({
   video,
@@ -125,9 +126,6 @@ export function useVideoProcessing({
     return () => {
       cancelled = true
       cancelAnimationFrame(animationId)
-      for (const processor of activeProcessors) {
-        void processor.destroy?.()
-      }
     }
   }, [enabled, video, canvas, fps, processors])
 

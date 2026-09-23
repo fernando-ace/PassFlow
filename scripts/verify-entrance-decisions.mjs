@@ -20,10 +20,18 @@ function person(bottom, x) {
   return { x, y: bottom - 200, width: 100, height: 200, confidence: 0.9 }
 }
 
-function runScenario({ credential, frames }) {
+function runScenario({ credential, frames, finalTimestamp }) {
   const tracker = new DoorwayTracker()
   const decision = new AccessDecisionEngine({ entryWindowMs: 12_000 })
-  if (credential) decision.credentialVerified(validCredential, 0)
+  if (credential === 'valid' || credential === true) {
+    decision.credentialVerified(validCredential, 0)
+  } else if (credential === 'invalid') {
+    decision.credentialVerified({
+      valid: false,
+      status: 'expired',
+      message: 'Credential expired.',
+    }, 0)
+  }
 
   let state = decision.snapshot(0)
   for (const sample of frames) {
@@ -33,6 +41,7 @@ function runScenario({ credential, frames }) {
       state = decision.recordEntrant(crossing.trackId, crossing.timestamp)
     }
   }
+  if (typeof finalTimestamp === 'number') state = decision.snapshot(finalTimestamp)
   return state
 }
 
@@ -76,8 +85,28 @@ const noCredential = runScenario({
 })
 assert.equal(noCredential.outcome, ACCESS_OUTCOME.unauthorized)
 
+const invalidCredential = runScenario({
+  credential: 'invalid',
+  frames: [
+    { timestamp: 1_000, detections: [person(540, 420)] },
+    { timestamp: 1_500, detections: [person(620, 420)] },
+    { timestamp: 2_000, detections: [person(710, 420)] },
+  ],
+})
+assert.equal(invalidCredential.outcome, ACCESS_OUTCOME.unauthorized)
+
+const unusedCredential = runScenario({
+  credential: 'valid',
+  frames: [],
+  finalTimestamp: 12_001,
+})
+assert.equal(unusedCredential.outcome, ACCESS_OUTCOME.waiting)
+assert.equal(unusedCredential.entryWindowActive, false)
+
 console.log('Deterministic entrance verification passed:')
 console.log(`- valid credential + one entrant: ${oneEntrant.outcome}`)
 console.log(`- valid credential + two entrants: ${multipleEntrants.outcome}`)
 console.log(`- near-door movement without crossing: ${nearDoor.entrantsCounted} entrants`)
 console.log(`- entrant without credential: ${noCredential.outcome}`)
+console.log(`- expired credential + entrant: ${invalidCredential.outcome}`)
+console.log(`- valid credential without crossing: ${unusedCredential.outcome}`)

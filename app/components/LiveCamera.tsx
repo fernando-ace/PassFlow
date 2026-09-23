@@ -8,18 +8,32 @@ import { useCanvasOverlay } from '@/app/hooks/useCanvasOverlay'
 import { useWebRTCStream } from '@/app/hooks/useWebRTCStream'
 import {
   ensureQrCredentialProcessorRegistered,
+  getQrCredentialProcessor,
   QR_CREDENTIAL_PROCESSOR_ID,
 } from '@/lib/video-processors/qrCredentialProcessor'
 import { useVideoProcessing } from '@/lib/video-processors/useVideoProcessing'
 import {
   ensurePersonDetectionProcessorRegistered,
+  getPersonDetectionProcessor,
   PERSON_DETECTION_PROCESSOR_ID,
+  type PersonDetectorStatus,
 } from '@/lib/video-processors/personDetectionProcessor'
 import type { ProcessorResult } from '@/lib/video-processors/types'
 import type { DetectionEvent } from '@/lib/types/events'
+import { CalibrationPanel, type CalibrationSettings } from './CalibrationPanel'
 import { ApertureIcon, PlayIcon, StopIcon } from './icons'
 
 const NO_EVENTS: DetectionEvent[] = []
+const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
+const DEFAULT_CALIBRATION: CalibrationSettings = {
+  boundaryPositionRatio: 0.62,
+  enteringDirection: 'positive',
+  neutralZoneWidthRatio: 0.07,
+  minimumConfidence: 0.55,
+  qrSamplingFps: 2,
+  samplingFps: 2,
+  entryWindowSeconds: 12,
+}
 
 interface LiveCameraProps {
   deviceId?: string
@@ -29,6 +43,7 @@ interface LiveCameraProps {
   onCredentialVerified: (result: VerificationResult) => void
   onPeopleResult: (result: ProcessorResult) => void
   onReset: () => void
+  onEntryWindowDurationChange: (durationMs: number) => void
 }
 
 export function LiveCamera({
@@ -39,12 +54,19 @@ export function LiveCamera({
   onCredentialVerified,
   onPeopleResult,
   onReset,
+  onEntryWindowDurationChange,
 }: LiveCameraProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null)
   const [qrDetected, setQrDetected] = useState(false)
+  const [calibrationEnabled, setCalibrationEnabled] = useState(false)
+  const [calibration, setCalibration] = useState(DEFAULT_CALIBRATION)
+  const [visionState, setVisionState] = useState<{ status: PersonDetectorStatus; error: string | null }>({
+    status: 'idle',
+    error: null,
+  })
   const lastResultIdRef = useRef<string | null>(null)
   const lastPeopleResultIdRef = useRef<string | null>(null)
   const attachVideoRef = useCallback((node: HTMLVideoElement | null) => {
@@ -59,7 +81,22 @@ export function LiveCamera({
   useEffect(() => {
     ensureQrCredentialProcessorRegistered()
     ensurePersonDetectionProcessorRegistered()
+    const personProcessor = getPersonDetectionProcessor()
+    if (!personProcessor) return
+    const updateStatus = () => setVisionState(personProcessor.getStatus())
+    updateStatus()
+    const unsubscribe = personProcessor.subscribeStatus(updateStatus)
+    void personProcessor.init().catch(() => {
+      // The visible status provides retry guidance; the Ring stream remains usable.
+    })
+    return unsubscribe
   }, [])
+
+  useEffect(() => {
+    getPersonDetectionProcessor()?.configure(calibration)
+    getQrCredentialProcessor()?.configureSamplingRate(calibration.qrSamplingFps)
+    onEntryWindowDurationChange(calibration.entryWindowSeconds * 1_000)
+  }, [calibration, onEntryWindowDurationChange])
 
   const { streamActive, streamStarting, streamError, startStream, stopStream } = useWebRTCStream({
     videoRef,
@@ -69,19 +106,31 @@ export function LiveCamera({
     video: videoElement,
     canvas: canvasElement,
     enabled: streamActive,
-    fps: 2,
+    fps: Math.max(calibration.qrSamplingFps, calibration.samplingFps),
   })
   useCanvasOverlay({
     videoRef,
     canvasRef,
     events: NO_EVENTS,
     results,
-    showDebug: process.env.NODE_ENV === 'development',
+    showDebug: IS_DEVELOPMENT && calibrationEnabled,
   })
   const credentialResult = results.get(QR_CREDENTIAL_PROCESSOR_ID)
   const credentialResultId = credentialResult?.id
   const credentialToken = credentialResult?.data?.token
   const peopleResult = results.get(PERSON_DETECTION_PROCESSOR_ID)
+  const peopleDetected = typeof peopleResult?.data?.peopleDetected === 'number'
+    ? peopleResult.data.peopleDetected
+    : 0
+  const inferenceMs = typeof peopleResult?.data?.inferenceMs === 'number'
+    ? peopleResult.data.inferenceMs
+    : null
+  const crossings = Array.isArray(peopleResult?.data?.crossings) ? peopleResult.data.crossings : []
+  const lastCrossingTrackIds = crossings.flatMap((crossing) => (
+    typeof crossing === 'object' && crossing !== null && typeof crossing.trackId === 'number'
+      ? [crossing.trackId]
+      : []
+  ))
 
   useEffect(() => {
     if (!peopleResult || peopleResult.id === lastPeopleResultIdRef.current) return
@@ -188,6 +237,19 @@ export function LiveCamera({
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
+        <span className={`inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-semibold ${
+          visionState.status === 'ready'
+            ? 'bg-passflow-success/10 text-passflow-success'
+            : visionState.status === 'error'
+              ? 'bg-passflow-danger/10 text-passflow-danger'
+              : 'bg-passflow-soft text-passflow-muted'
+        }`}>
+          {visionState.status === 'ready'
+            ? 'Vision ready'
+            : visionState.status === 'error'
+              ? 'Vision unavailable'
+              : 'Loading vision model'}
+        </span>
         {!streamActive ? (
           <button
             type="button"
@@ -208,6 +270,25 @@ export function LiveCamera({
             Stop Live View
           </button>
         )}
+        {visionState.status === 'error' ? (
+          <button
+            type="button"
+            className="control-button control-button-secondary"
+            onClick={() => void getPersonDetectionProcessor()?.init().catch(() => {})}
+          >
+            Retry vision model
+          </button>
+        ) : null}
+        {IS_DEVELOPMENT ? (
+          <button
+            type="button"
+            aria-expanded={calibrationEnabled}
+            className="control-button control-button-secondary"
+            onClick={() => setCalibrationEnabled((enabled) => !enabled)}
+          >
+            {calibrationEnabled ? 'Hide calibration' : 'Calibrate Ring feed'}
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -219,6 +300,22 @@ export function LiveCamera({
           The live session connects directly through PassFlow’s server-side Ring integration.
         </p>
       )}
+
+      {visionState.status === 'error' ? (
+        <div role="alert" className="mt-4 max-w-3xl rounded-lg border border-passflow-danger/25 bg-passflow-danger/5 px-4 py-3 text-sm leading-6 text-passflow-danger">
+          Vision model failed to load{visionState.error ? `: ${visionState.error}` : '.'} QR scanning and the Ring stream remain available. Retry when the connection is stable.
+        </div>
+      ) : null}
+
+      {IS_DEVELOPMENT && calibrationEnabled ? (
+        <CalibrationPanel
+          settings={calibration}
+          onChange={setCalibration}
+          peopleDetected={peopleDetected}
+          inferenceMs={inferenceMs}
+          lastCrossingTrackIds={lastCrossingTrackIds}
+        />
+      ) : null}
     </section>
   )
 }

@@ -90,4 +90,51 @@ test('an unused credential window returns to waiting after expiry', () => {
 
   assert.equal(state.outcome, ACCESS_OUTCOME.waiting)
   assert.equal(state.entryWindowActive, false)
+  assert.equal(state.credential.status, 'none')
+})
+
+test('holds a crossing during verification and authorizes it after a valid result', () => {
+  const engine = new AccessDecisionEngine({ entryWindowMs: 10_000 })
+  engine.credentialChecking(1_000)
+  const pending = engine.recordEntrant(4, 1_100)
+  const state = engine.credentialVerified(validCredential, 1_200)
+
+  assert.equal(pending.outcome, ACCESS_OUTCOME.checking)
+  assert.equal(state.outcome, ACCESS_OUTCOME.authorized)
+  assert.equal(state.entrantsCounted, 1)
+})
+
+test('holds a crossing during verification and rejects it after an invalid result', () => {
+  const engine = new AccessDecisionEngine()
+  engine.credentialChecking(1_000)
+  engine.recordEntrant(4, 1_100)
+  const state = engine.credentialVerified({
+    valid: false,
+    status: 'expired',
+    message: 'Credential expired.',
+  }, 1_200)
+
+  assert.equal(state.outcome, ACCESS_OUTCOME.unauthorized)
+  assert.equal(state.credential.status, 'expired')
+})
+
+test('reset clears active decision state but preserves the in-memory timeline', () => {
+  const engine = new AccessDecisionEngine()
+  engine.credentialVerified(validCredential, 1_000)
+  engine.recordEntrant(1, 2_000)
+  const state = engine.reset()
+
+  assert.equal(state.outcome, ACCESS_OUTCOME.waiting)
+  assert.equal(state.entrantsCounted, 0)
+  assert.equal(state.entryWindowActive, false)
+  assert.ok(state.events.some((event) => event.type === 'authorized-entry'))
+})
+
+test('updates the active credential window duration for calibration', () => {
+  const engine = new AccessDecisionEngine({ entryWindowMs: 12_000 })
+  engine.credentialVerified(validCredential, 1_000)
+  const state = engine.setEntryWindowMs(20_000, 2_000)
+
+  assert.equal(state.entryWindowExpiresAt, 21_000)
+  assert.equal(state.entryWindowRemainingMs, 19_000)
 })

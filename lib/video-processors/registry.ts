@@ -56,7 +56,15 @@ class VideoProcessorRegistry implements ProcessorRegistry {
   private notifyListeners(): void {
     this.listeners.forEach(l => l())
   }
+
+  resetSessions(): void {
+    this.processors.forEach((processor) => processor.resetSession?.())
+  }
 }
 
 // Singleton instance
 export const processorRegistry = new VideoProcessorRegistry()
+
+export function resetVideoProcessorSessions() {
+  processorRegistry.resetSessions()
+}

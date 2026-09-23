@@ -77,6 +77,9 @@ export interface VideoProcessor {
    * Cleanup resources when processor is disabled
    */
   destroy?(): Promise<void>
+
+  /** Clear transient per-access-session state without unloading heavy resources. */
+  resetSession?(): void
 }
 
 export interface ProcessorRegistry {
