@@ -1,17 +1,16 @@
 'use client'
 
-import { useState } from 'react'
 import { AccessDecision } from '@/app/components/AccessDecision'
 import { AppHeader } from '@/app/components/AppHeader'
 import { CreatePass } from '@/app/components/CreatePass'
 import { DevicePanel } from '@/app/components/DevicePanel'
 import { LiveCamera } from '@/app/components/LiveCamera'
 import { useRingDevice } from '@/app/hooks/useRingDevice'
-import type { AccessDecisionState } from '@/app/types/access'
+import { useAccessDecision } from '@/app/hooks/useAccessDecision'
 
 export default function PassFlow() {
   const { device, status, error } = useRingDevice()
-  const [decision, setDecision] = useState<AccessDecisionState>({ state: 'idle' })
+  const access = useAccessDecision()
 
   return (
     <div className="min-h-screen bg-white">
@@ -22,14 +21,17 @@ export default function PassFlow() {
             deviceId={device?.id}
             deviceStatus={status}
             deviceError={error}
-            onDecisionChange={setDecision}
+            onCredentialChecking={access.credentialChecking}
+            onCredentialVerified={access.credentialVerified}
+            onPeopleResult={access.processPeopleResult}
+            onReset={access.resetDecision}
           />
           <CreatePass />
         </div>
 
         <aside className="border-t border-passflow-border bg-white px-6 py-10 sm:px-8 lg:border-t-0 lg:px-8 lg:py-12 xl:px-10">
           <DevicePanel device={device} status={status} />
-          <AccessDecision decision={decision} />
+          <AccessDecision decision={access.decision} />
         </aside>
       </main>
     </div>

@@ -9,12 +9,19 @@ interface UseCanvasOverlayOptions {
   canvasRef: RefObject<HTMLCanvasElement>
   events: DetectionEvent[]
   results: Map<string, ProcessorResult>
+  showDebug?: boolean
 }
 
 /**
  * Draws generic bounding boxes from Ring events and PassFlow processors.
  */
-export function useCanvasOverlay({ videoRef, canvasRef, events, results }: UseCanvasOverlayOptions) {
+export function useCanvasOverlay({
+  videoRef,
+  canvasRef,
+  events,
+  results,
+  showDebug = false,
+}: UseCanvasOverlayOptions) {
   const eventsRef = useRef(events)
   const resultsRef = useRef(results)
 
@@ -53,9 +60,11 @@ export function useCanvasOverlay({ videoRef, canvasRef, events, results }: UseCa
 
       const processorBoxes = Array.from(resultsRef.current.values())
         .flatMap((result) => result.boundingBoxes || [])
+        .filter((box) => showDebug || !box.debugOnly)
 
       const processorLines = Array.from(resultsRef.current.values())
         .flatMap((result) => result.overlayLines || [])
+        .filter((line) => showDebug || !line.debugOnly)
 
       for (const line of processorLines) {
         context.save()
@@ -99,5 +108,5 @@ export function useCanvasOverlay({ videoRef, canvasRef, events, results }: UseCa
 
     animationId = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(animationId)
-  }, [canvasRef, videoRef])
+  }, [canvasRef, showDebug, videoRef])
 }

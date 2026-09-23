@@ -13,6 +13,7 @@ export interface BoundingBox {
   label?: string
   confidence?: number
   color?: string
+  debugOnly?: boolean
 }
 
 export interface OverlayLine {
@@ -23,6 +24,7 @@ export interface OverlayLine {
   label?: string
   color?: string
   dashed?: boolean
+  debugOnly?: boolean
 }
 
 export interface ProcessorResult {

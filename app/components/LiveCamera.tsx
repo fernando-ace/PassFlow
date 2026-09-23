@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AccessDecisionState } from '@/app/types/access'
 import type { RingDeviceStatus } from '@/app/types/ring'
 import { verifyQrCredential } from '@/lib/credentials/verifyQrCredential'
+import type { VerificationResult } from '@/lib/credentials/types'
 import { useCanvasOverlay } from '@/app/hooks/useCanvasOverlay'
 import { useWebRTCStream } from '@/app/hooks/useWebRTCStream'
 import {
@@ -11,6 +11,11 @@ import {
   QR_CREDENTIAL_PROCESSOR_ID,
 } from '@/lib/video-processors/qrCredentialProcessor'
 import { useVideoProcessing } from '@/lib/video-processors/useVideoProcessing'
+import {
+  ensurePersonDetectionProcessorRegistered,
+  PERSON_DETECTION_PROCESSOR_ID,
+} from '@/lib/video-processors/personDetectionProcessor'
+import type { ProcessorResult } from '@/lib/video-processors/types'
 import type { DetectionEvent } from '@/lib/types/events'
 import { ApertureIcon, PlayIcon, StopIcon } from './icons'
 
@@ -20,16 +25,28 @@ interface LiveCameraProps {
   deviceId?: string
   deviceStatus: RingDeviceStatus
   deviceError: string | null
-  onDecisionChange: (decision: AccessDecisionState) => void
+  onCredentialChecking: () => void
+  onCredentialVerified: (result: VerificationResult) => void
+  onPeopleResult: (result: ProcessorResult) => void
+  onReset: () => void
 }
 
-export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChange }: LiveCameraProps) {
+export function LiveCamera({
+  deviceId,
+  deviceStatus,
+  deviceError,
+  onCredentialChecking,
+  onCredentialVerified,
+  onPeopleResult,
+  onReset,
+}: LiveCameraProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null)
   const [qrDetected, setQrDetected] = useState(false)
   const lastResultIdRef = useRef<string | null>(null)
+  const lastPeopleResultIdRef = useRef<string | null>(null)
   const attachVideoRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node
     setVideoElement(node)
@@ -39,7 +56,10 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
     setCanvasElement(node)
   }, [])
 
-  useEffect(() => ensureQrCredentialProcessorRegistered(), [])
+  useEffect(() => {
+    ensureQrCredentialProcessorRegistered()
+    ensurePersonDetectionProcessorRegistered()
+  }, [])
 
   const { streamActive, streamStarting, streamError, startStream, stopStream } = useWebRTCStream({
     videoRef,
@@ -51,10 +71,23 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
     enabled: streamActive,
     fps: 2,
   })
-  useCanvasOverlay({ videoRef, canvasRef, events: NO_EVENTS, results })
+  useCanvasOverlay({
+    videoRef,
+    canvasRef,
+    events: NO_EVENTS,
+    results,
+    showDebug: process.env.NODE_ENV === 'development',
+  })
   const credentialResult = results.get(QR_CREDENTIAL_PROCESSOR_ID)
   const credentialResultId = credentialResult?.id
   const credentialToken = credentialResult?.data?.token
+  const peopleResult = results.get(PERSON_DETECTION_PROCESSOR_ID)
+
+  useEffect(() => {
+    if (!peopleResult || peopleResult.id === lastPeopleResultIdRef.current) return
+    lastPeopleResultIdRef.current = peopleResult.id
+    onPeopleResult(peopleResult)
+  }, [onPeopleResult, peopleResult])
 
   useEffect(() => {
     if (
@@ -68,24 +101,21 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
     const indicatorTimer = window.setTimeout(() => setQrDetected(false), 1800)
     const controller = new AbortController()
 
-    onDecisionChange({ state: 'checking' })
+    onCredentialChecking()
     void verifyQrCredential(credentialToken, controller.signal)
       .then((verification) => {
         if (!controller.signal.aborted) {
-          onDecisionChange({ state: 'result', result: verification })
+          onCredentialVerified(verification)
         }
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          onDecisionChange({
-            state: 'result',
-            result: {
+          onCredentialVerified({
               valid: false,
               status: 'malformed',
               message: error instanceof Error
                 ? error.message
                 : 'PassFlow could not verify this credential. Try again.',
-            },
           })
         }
       })
@@ -94,10 +124,18 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
       controller.abort()
       window.clearTimeout(indicatorTimer)
     }
-  }, [credentialResultId, credentialToken, onDecisionChange])
+  }, [credentialResultId, credentialToken, onCredentialChecking, onCredentialVerified])
 
   const unavailable = deviceStatus !== 'ready' || !deviceId
   const error = streamError || deviceError
+  const handleStartStream = useCallback(() => {
+    onReset()
+    startStream()
+  }, [onReset, startStream])
+  const handleStopStream = useCallback(() => {
+    stopStream()
+    onReset()
+  }, [onReset, stopStream])
 
   return (
     <section aria-labelledby="live-camera-heading" className="min-w-0">
@@ -153,7 +191,7 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
         {!streamActive ? (
           <button
             type="button"
-            onClick={startStream}
+            onClick={handleStartStream}
             disabled={unavailable || streamStarting}
             className="control-button control-button-primary"
           >
@@ -165,7 +203,7 @@ export function LiveCamera({ deviceId, deviceStatus, deviceError, onDecisionChan
                 : 'Start Live View'}
           </button>
         ) : (
-          <button type="button" onClick={stopStream} className="control-button control-button-secondary">
+          <button type="button" onClick={handleStopStream} className="control-button control-button-secondary">
             <StopIcon className="size-5" />
             Stop Live View
           </button>

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { AccessDecision } from '@/app/components/AccessDecision'
 import { AppHeader } from '@/app/components/AppHeader'
-import type { AccessDecisionState } from '@/app/types/access'
+import { useAccessDecision } from '@/app/hooks/useAccessDecision'
 import { verifyQrCredential } from '@/lib/credentials/verifyQrCredential'
 import type { VerificationResult } from '@/lib/credentials/types'
 import type { DetectionEvent } from '@/lib/types/events'
@@ -66,7 +66,7 @@ export function DevQrHarness() {
   const [staticPreview, setStaticPreview] = useState<string | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [videoRunning, setVideoRunning] = useState(false)
-  const [decision, setDecision] = useState<AccessDecisionState>({ state: 'idle' })
+  const { decision, credentialChecking, credentialVerified } = useAccessDecision()
   const [events, setEvents] = useState<HarnessEvent[]>([])
   const [busy, setBusy] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -117,11 +117,11 @@ export function DevQrHarness() {
     verificationControllerRef.current?.abort()
     const controller = new AbortController()
     verificationControllerRef.current = controller
-    setDecision({ state: 'checking' })
+    credentialChecking()
     try {
       const verification = await verifyQrCredential(value, controller.signal)
       if (controller.signal.aborted) return
-      setDecision({ state: 'result', result: verification })
+      credentialVerified(verification)
       record(source, statusLabel(verification), verification.message)
     } catch (error) {
       if (controller.signal.aborted) return
@@ -130,10 +130,10 @@ export function DevQrHarness() {
         status: 'malformed',
         message: error instanceof Error ? error.message : 'Credential verification failed.',
       }
-      setDecision({ state: 'result', result: failure })
+      credentialVerified(failure)
       record(source, 'ERROR', failure.message)
     }
-  }, [record])
+  }, [credentialChecking, credentialVerified, record])
 
   const scanImageUrl = useCallback(async (url: string, source: string) => {
     const frame = await imageDataFromUrl(url)

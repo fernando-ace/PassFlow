@@ -101,6 +101,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
       label: `Person #${track.id}`,
       confidence: track.confidence,
       color: track.entered ? '#059669' : '#0d9488',
+      debugOnly: true,
     }))
     const boundaryPosition = ENTRANCE_CONFIG.boundary.orientation === 'horizontal'
       ? frame.height * ENTRANCE_CONFIG.boundary.positionRatio
@@ -114,6 +115,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
           label: 'Entrance boundary',
           color: '#f59e0b',
           dashed: true,
+          debugOnly: true,
         }]
       : [{
           x1: boundaryPosition,
@@ -123,6 +125,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
           label: 'Entrance boundary',
           color: '#f59e0b',
           dashed: true,
+          debugOnly: true,
         }]
 
     return {
