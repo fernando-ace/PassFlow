@@ -9,9 +9,9 @@ PassFlow began from Amazon's official [Ring API Hello World](https://github.com/
 ## Current milestone
 
 ```text
-Ring Developer Playground token
+Ring Developer Playground token (fallback)
         ↓
-server-side Ring authentication
+server-side Ring authentication and durable Private App credentials
         ↓
 Ring device discovery
         ↓
@@ -37,7 +37,10 @@ The QR contains only a signed PassFlow token. The signing secret and credential 
 ## Architecture
 
 - **Next.js 15 App Router + TypeScript** provides the application and API routes.
-- **`lib/auth.ts`** reads Ring credentials only on the server and supports direct Playground access tokens plus optional refresh-token OAuth.
+- **`lib/auth.ts`** keeps Playground credentials separate and refreshes durable Ring Private App credentials for device calls.
+- **`app/api/ring/token`** exchanges Ring's one-way account-link authorization code and persists encrypted, unclaimed credentials.
+- **`app/ring/link`** authenticates the configured PassFlow owner, validates Ring's timestamped HMAC nonce, and completes Ring's integration handshake.
+- **`app/api/webhook`** validates Ring's raw-body HMAC signature before processing events and broadcasting SSE updates.
 - **`app/api/ring/devices`** discovers devices and normalizes the Ring response for the UI.
 - **`app/api/ring/stream`** creates and closes Ring WHEP sessions. The access token never enters client code.
 - **`app/hooks/useRingDevice.ts`** manages browser-side discovery state without handling credentials.
@@ -55,8 +58,8 @@ The QR contains only a signed PassFlow token. The signing secret and credential 
 
 - Node.js 18 or newer
 - npm
-- A Ring account with an eligible device available to the Ring Developer Playground
-- A current Ring Developer Playground access token
+- A Ring account and eligible device available through the Playground or Private App staging flow
+- A current Playground token, or a deployed and configured Ring Private App integration
 - A modern browser with WebRTC support
 
 ## Install
@@ -150,22 +153,66 @@ To recover:
 
 Do not configure `RING_ACCESS_TOKEN` and `RING_REFRESH_TOKEN` at the same time.
 
-## Optional refresh-token support
+## Ring Private App staging account linking
 
-The sample's server-side OAuth refresh flow is preserved for future use:
+PassFlow supports Ring's one-way Private App flow. It exchanges the authorization code at `https://oauth.ring.com/oauth/token`, retrieves the Ring account ID from `/v1/users/me`, and stores the access and refresh tokens encrypted in PostgreSQL. The browser never receives Ring credentials. Device API calls refresh credentials five minutes before expiration and persist both rotated tokens.
+
+The Account Link page requires the configured PassFlow owner to sign in before nonce matching. Ring's flow uses `HMAC-SHA256(key, "time:account_id")`, Base64URL without padding, and a 10-minute timestamp window. Webhooks use the same HMAC key but require `sha256=` plus a hexadecimal digest over the exact raw request bytes.
+
+### Configure deployment secrets
+
+Set these server-side variables in Vercel and local `.env.local`. Never add a `NEXT_PUBLIC_` prefix:
 
 ```dotenv
-# Remove or comment out RING_ACCESS_TOKEN first.
+RING_CLIENT_ID=
+RING_CLIENT_SECRET=
+RING_HMAC_KEY=
+RING_TOKEN_ENCRYPTION_KEY=
+RING_LINK_OWNER_EMAIL=
+RING_LINK_OWNER_PASSWORD=
+POSTGRES_URL=
+```
+
+`RING_TOKEN_ENCRYPTION_KEY` must be a base64url-encoded random 32-byte key. Generate one with:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+`POSTGRES_URL` is the server-only Vercel Postgres connection string. Apply the included schema once:
+
+```powershell
+psql "$env:POSTGRES_URL" -f db/migrations/001_ring_credentials.sql
+```
+
+The owner email is masked before it is sent to Ring as the partner `account_identifier`. The owner password is used only by the server-side sign-in route. The session cookie is HttpOnly, SameSite=Lax, signed with `RING_HMAC_KEY`, and expires after 30 minutes.
+
+### Ring Developer Portal staging URLs
+
+Replace `<YOUR_VERCEL_DOMAIN>` with the deployed HTTPS host, without angle brackets:
+
+| Ring staging field | URL |
+| --- | --- |
+| Token Exchange URL | `https://<YOUR_VERCEL_DOMAIN>/api/ring/token` |
+| Account Link URL | `https://<YOUR_VERCEL_DOMAIN>/ring/link` |
+| Webhook URL | `https://<YOUR_VERCEL_DOMAIN>/api/webhook` |
+| App Homepage URL | `https://<YOUR_VERCEL_DOMAIN>/` |
+
+The token endpoint accepts a `code` field in a JSON or `application/x-www-form-urlencoded` POST. The Ring access and refresh tokens remain encrypted at rest, along with the expiration, Ring account ID, and link state. The nonce digest and timestamp are recorded after the signed-in owner completes the link. The owner authentication identity and database are single-deployment resources; this does not add general PassFlow user accounts.
+
+Playground mode remains available: set `RING_ACCESS_TOKEN` to use it. With neither Playground variable set, PassFlow uses the most recently completed Private App account. Do not set `RING_ACCESS_TOKEN` and `RING_REFRESH_TOKEN` together. The older `RING_REFRESH_TOKEN` environment mode is also preserved separately from durable Private App storage:
+
+```dotenv
 RING_REFRESH_TOKEN=replace_with_refresh_token
 RING_CLIENT_ID=replace_with_client_id
 RING_CLIENT_SECRET=replace_with_client_secret
 
-# Optional in refresh-token mode:
+# Optional when using RING_REFRESH_TOKEN:
 # RING_DEVICE_ID=replace_with_device_id
 # RING_DEVICE_NAME=Front Door
 ```
 
-Production OAuth and account linking are outside the current milestone.
+Real staging account linking still requires deployment, setting these server-side values, applying the PostgreSQL migration, and manually connecting a Ring staging account from Ring's app. This implementation does not verify a real Ring account by itself.
 
 ## Validation
 
