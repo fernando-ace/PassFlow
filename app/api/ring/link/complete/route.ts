@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { validateRingLink } from '@/lib/ring-auth-core.mjs'
 import { claimRingCredential, listUnclaimedRingCredentials, setRingCredentialLinkState } from '@/lib/ring-store'
-import { getOwnerSession, maskRingAccountIdentifier } from '@/lib/ring-owner-session'
+import {
+  createRingLinkResult,
+  getOwnerSession,
+  maskRingAccountIdentifier,
+  RING_LINK_RESULT_COOKIE,
+} from '@/lib/ring-owner-session'
 import { decryptRingToken } from '@/lib/ring-auth-core.mjs'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +28,20 @@ async function callRing(path: string, method: 'POST' | 'PATCH', accessToken: str
 }
 
 export async function POST(request: NextRequest) {
-  const result = (status: string, httpStatus = 303) => NextResponse.redirect(new URL(`/ring/link/result?status=${status}`, request.url), httpStatus)
+  const result = (status: Parameters<typeof createRingLinkResult>[0]) => {
+    const response = NextResponse.redirect(new URL('/ring/link/result', request.url), 303)
+    if (process.env.RING_HMAC_KEY) {
+      response.cookies.set(RING_LINK_RESULT_COOKIE, createRingLinkResult(status), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/ring/link/result',
+        maxAge: 120,
+      })
+    }
+    response.headers.set('Cache-Control', 'no-store')
+    return response
+  }
   if (!isSameOrigin(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
   const ownerEmail = getOwnerSession(request)
   if (!ownerEmail) return result('sign-in-required')

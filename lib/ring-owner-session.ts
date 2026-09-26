@@ -3,7 +3,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 
 export const RING_OWNER_COOKIE = 'passflow_ring_owner'
+export const RING_LINK_RESULT_COOKIE = 'passflow_ring_link_result'
 const SESSION_SECONDS = 30 * 60
+const RESULT_SECONDS = 2 * 60
+const RESULT_STATUSES = new Set([
+  'success', 'sign-in-failed', 'sign-in-required', 'unavailable', 'invalid-request',
+  'invalid-or-expired', 'already-used', 'ring-rejected', 'completion-pending', 'failure',
+])
 
 function hmacKey() {
   const key = process.env.RING_HMAC_KEY
@@ -31,6 +37,32 @@ export function verifyOwnerSession(value: string | undefined, now = Date.now()):
     const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
     if (typeof session.email !== 'string' || !Number.isSafeInteger(session.exp) || session.exp <= Math.floor(now / 1000)) return null
     return session.email
+  } catch {
+    return null
+  }
+}
+
+export type RingLinkResultStatus =
+  | 'success' | 'sign-in-failed' | 'sign-in-required' | 'unavailable' | 'invalid-request'
+  | 'invalid-or-expired' | 'already-used' | 'ring-rejected' | 'completion-pending' | 'failure'
+
+export function createRingLinkResult(status: RingLinkResultStatus, now = Date.now()) {
+  if (!RESULT_STATUSES.has(status)) throw new Error('Invalid Ring link result status')
+  const payload = Buffer.from(JSON.stringify({ status, exp: Math.floor(now / 1000) + RESULT_SECONDS })).toString('base64url')
+  return `${payload}.${signature(payload)}`
+}
+
+export function verifyRingLinkResult(value: string | undefined, now = Date.now()): RingLinkResultStatus | null {
+  if (!value) return null
+  const [payload, receivedSignature, extra] = value.split('.')
+  if (!payload || !receivedSignature || extra !== undefined) return null
+  const expected = Buffer.from(signature(payload))
+  const supplied = Buffer.from(receivedSignature)
+  if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null
+  try {
+    const result = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+    if (!RESULT_STATUSES.has(result.status) || !Number.isSafeInteger(result.exp) || result.exp <= Math.floor(now / 1000)) return null
+    return result.status as RingLinkResultStatus
   } catch {
     return null
   }
