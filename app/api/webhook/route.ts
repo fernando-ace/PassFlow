@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { broadcastEvent, eventStore, addClient, removeClient } from '@/lib/sse-broadcast'
 import { parseRingWebhook } from '@/lib/schemas/webhook'
+import { verifyRingWebhookSignature } from '@/lib/ring-auth-core.mjs'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -47,20 +48,20 @@ function normalizeGenericEvent(body: any) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('Authorization')
-    const expectedToken = process.env.RING_WEBHOOK_SECRET
-
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const hmacKey = process.env.RING_HMAC_KEY
+    if (!hmacKey) return NextResponse.json({ error: 'Webhook authentication is not configured.' }, { status: 503 })
+    const rawBody = Buffer.from(await request.arrayBuffer())
+    if (rawBody.length > 1_000_000) return NextResponse.json({ error: 'Payload too large.' }, { status: 413 })
+    if (!verifyRingWebhookSignature(rawBody, request.headers.get('X-Signature'), hmacKey)) {
+      return NextResponse.json({ error: 'Invalid webhook signature.' }, { status: 401 })
     }
-
-    const body = await request.json()
+    const body = JSON.parse(rawBody.toString('utf8'))
 
     // Idempotency check
     const requestId = body?.meta?.request_id
     if (requestId) {
       if (processedRequests.has(requestId)) {
-        return NextResponse.json({ status: 'already_processed', request_id: requestId })
+        return NextResponse.json({ status: 'already_processed', request_id: requestId }, { status: 200 })
       }
       processedRequests.add(requestId)
       if (processedRequests.size > MAX_PROCESSED_IDS) {
@@ -75,14 +76,10 @@ export async function POST(request: NextRequest) {
       ? normalizeRingEvent(body)
       : normalizeGenericEvent(body)
 
-    if (!parsed.success) {
-      console.log('[WEBHOOK] Non-Ring payload, using generic normalization')
-    }
-
     broadcastEvent(event)
-    return NextResponse.json({ status: 'processed', event_id: event.event_id })
+    return NextResponse.json({ status: 'processed', event_id: event.event_id }, { status: 200 })
   } catch (error) {
-    console.error('[WEBHOOK] Error:', error)
+    console.error('[WEBHOOK] Request processing failed:', error instanceof Error ? error.message : 'Unknown error')
     return NextResponse.json({ error: 'Processing failed' }, { status: 500 })
   }
 }
