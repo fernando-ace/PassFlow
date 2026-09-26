@@ -19,6 +19,7 @@
     "@tensorflow/tfjs-core": "^4.22.0",
     "jsqr": "^1.4.0",
     "next": "15.5.26",
+    "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
