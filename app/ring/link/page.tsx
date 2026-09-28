@@ -2,7 +2,8 @@ import { verifyOwnerSession, RING_OWNER_COOKIE, ownerCredentialsConfigured } fro
 import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
-export const metadata = { title: 'Connect Ring account | PassFlow', referrer: 'no-referrer' as const }
+// Native form posts need a real Origin; keep the Ring link URL off cross-origin requests.
+export const metadata = { title: 'Connect Ring account | PassFlow', referrer: 'same-origin' as const }
 
 type Props = { searchParams: Promise<{ nonce?: string | string[]; time?: string | string[] }> }
 
