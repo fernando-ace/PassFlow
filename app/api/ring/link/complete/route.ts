@@ -9,14 +9,10 @@ import {
   RING_LINK_RESULT_COOKIE,
 } from '@/lib/ring-owner-session'
 import { decryptRingToken } from '@/lib/ring-auth-core.mjs'
+import { isSameOriginRequest } from '@/lib/same-origin-request'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-
-function isSameOrigin(request: NextRequest) {
-  const origin = request.headers.get('origin')
-  return origin === request.nextUrl.origin
-}
 
 async function callRing(path: string, method: 'POST' | 'PATCH', accessToken: string, payload: Record<string, string>) {
   return fetch(`https://api.amazonvision.com${path}`, {
@@ -42,7 +38,7 @@ export async function POST(request: NextRequest) {
     response.headers.set('Cache-Control', 'no-store')
     return response
   }
-  if (!isSameOrigin(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
   const ownerEmail = getOwnerSession(request)
   if (!ownerEmail) return result('sign-in-required')
 

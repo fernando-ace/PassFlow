@@ -7,14 +7,10 @@ import {
   RING_OWNER_COOKIE,
   verifyOwnerCredentials,
 } from '@/lib/ring-owner-session'
+import { isSameOriginRequest } from '@/lib/same-origin-request'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
-
-function isSameOrigin(request: NextRequest) {
-  const origin = request.headers.get('origin')
-  return origin === request.nextUrl.origin
-}
 
 function resultResponse(request: NextRequest, status: Parameters<typeof createRingLinkResult>[0]) {
   const response = NextResponse.redirect(new URL('/ring/link/result', request.url), 303)
@@ -32,7 +28,7 @@ function resultResponse(request: NextRequest, status: Parameters<typeof createRi
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSameOrigin(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: 'Invalid request origin.' }, { status: 403 })
   if (!ownerCredentialsConfigured()) return resultResponse(request, 'unavailable')
   try {
     const form = await request.formData()
