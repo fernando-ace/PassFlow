@@ -2,18 +2,22 @@ import type { RingDevice, RingDeviceStatus } from '@/app/types/ring'
 import { CameraIcon } from './icons'
 
 interface DevicePanelProps {
+  devices: RingDevice[]
   device: RingDevice | null
   status: RingDeviceStatus
+  onSelect: (id: string) => void
 }
 
-export function DevicePanel({ device, status }: DevicePanelProps) {
+export function DevicePanel({ devices, device, status, onSelect }: DevicePanelProps) {
   const statusLabel = status === 'loading'
     ? 'Discovering device'
-    : device?.online
-      ? 'Online'
-      : status === 'ready'
-        ? 'Offline'
-        : 'Unavailable'
+    : status === 'empty'
+      ? 'No cameras found'
+      : device?.online
+        ? 'Online'
+        : status === 'ready'
+          ? 'Offline'
+          : 'Unavailable'
 
   return (
     <section aria-labelledby="ring-device-heading" className="border-b border-passflow-border pb-8">
@@ -27,7 +31,7 @@ export function DevicePanel({ device, status }: DevicePanelProps) {
             {device?.name || (status === 'loading' ? 'Finding your camera' : 'Ring camera')}
           </p>
           {device?.id ? (
-            <p className="mt-1 text-xs text-passflow-faint">Ring camera</p>
+            <p className="mt-1 break-all text-xs text-passflow-faint">Device ID: {device.id}</p>
           ) : null}
           <div className="mt-3 flex items-center gap-2 text-sm font-medium">
             <span
@@ -45,6 +49,14 @@ export function DevicePanel({ device, status }: DevicePanelProps) {
           </div>
         </div>
       </div>
+      {devices.length > 1 ? (
+        <label className="mt-5 block">
+          <span className="form-label">Camera</span>
+          <select aria-label="Select Ring camera" className="form-control" value={device?.id ?? ''} onChange={(event) => onSelect(event.target.value)}>
+            {devices.map((item) => <option key={item.id} value={item.id}>{item.name}{item.online ? '' : ' (offline)'}</option>)}
+          </select>
+        </label>
+      ) : null}
     </section>
   )
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { processorRegistry } from './registry'
 import { ProcessorResult, VideoProcessor } from './types'
+import { createSingleFlightGate, resetVideoSource } from './processingCore.mjs'
 
 interface UseVideoProcessingOptions {
   video: HTMLVideoElement | null
@@ -27,6 +28,7 @@ export function useVideoProcessing({
 
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const resultsRef = useRef<Map<string, ProcessorResult>>(new Map())
+  const inferenceGateRef = useRef(createSingleFlightGate())
 
   // Subscribe to processor registry changes
   useEffect(() => {
@@ -42,10 +44,10 @@ export function useVideoProcessing({
   }, [])
 
   useEffect(() => {
-    if (enabled) return
-    resultsRef.current.clear()
+    if (enabled && video) return
+    resetVideoSource([], resultsRef.current)
     setDisplayResults(new Map())
-  }, [enabled])
+  }, [enabled, video])
 
   // Batch UI updates at 2Hz to reduce re-renders
   useEffect(() => {
@@ -87,31 +89,34 @@ export function useVideoProcessing({
       }
       lastTime = timestamp
 
-      if (video.readyState < 2 || video.paused) {
+      if (video.readyState < 2 || video.paused || video.videoWidth <= 0 || video.videoHeight <= 0) {
+        queueNextFrame()
+        return
+      }
+      if (!inferenceGateRef.current.acquire()) {
         queueNextFrame()
         return
       }
 
-      // Capture frame
-      frameCanvas.width = video.videoWidth || 640
-      frameCanvas.height = video.videoHeight || 480
-      frameCtx.drawImage(video, 0, 0)
+      try {
+        frameCanvas.width = video.videoWidth
+        frameCanvas.height = video.videoHeight
+        frameCtx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height)
+        const frame = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height)
 
-      const frame = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height)
-
-      // Run enabled processors
-      for (const processor of activeProcessors) {
-        try {
-          const result = await processor.process(frame, canvas, video)
-          if (cancelled) return
-          if (result) {
-            resultsRef.current.set(processor.id, result)
+        for (const processor of activeProcessors) {
+          try {
+            const result = await processor.process(frame, canvas, video)
+            if (cancelled) return
+            if (result) resultsRef.current.set(processor.id, result)
+            else resultsRef.current.delete(processor.id)
+          } catch (err) {
+            console.error(`Processor ${processor.id} error:`, err)
           }
-        } catch (err) {
-          console.error(`Processor ${processor.id} error:`, err)
         }
+      } finally {
+        inferenceGateRef.current.release()
       }
-
       queueNextFrame()
     }
 
@@ -126,6 +131,7 @@ export function useVideoProcessing({
     return () => {
       cancelled = true
       cancelAnimationFrame(animationId)
+      resetVideoSource(activeProcessors, resultsRef.current)
     }
   }, [enabled, video, canvas, fps, processors])
 

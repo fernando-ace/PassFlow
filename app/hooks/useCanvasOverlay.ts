@@ -3,6 +3,7 @@
 import { useEffect, useRef, RefObject } from 'react'
 import { DetectionEvent } from '@/lib/types/events'
 import { ProcessorResult } from '@/lib/video-processors/types'
+import { getContainedVideoRect } from '@/lib/video-processors/processingCore.mjs'
 
 interface UseCanvasOverlayOptions {
   videoRef: RefObject<HTMLVideoElement>
@@ -43,10 +44,20 @@ export function useCanvasOverlay({
       canvas.height = video.clientHeight
       context.clearRect(0, 0, canvas.width, canvas.height)
 
-      const videoWidth = video.videoWidth || 1920
-      const videoHeight = video.videoHeight || 1080
-      const scaleX = canvas.width / videoWidth
-      const scaleY = canvas.height / videoHeight
+      const videoWidth = video.videoWidth
+      const videoHeight = video.videoHeight
+      if (videoWidth <= 0 || videoHeight <= 0 || canvas.width <= 0 || canvas.height <= 0) {
+        animationId = requestAnimationFrame(draw)
+        return
+      }
+      // The video uses object-contain, so map video pixels to the centered visible area.
+      const rect = getContainedVideoRect(canvas.width, canvas.height, videoWidth, videoHeight)
+      if (!rect) {
+        animationId = requestAnimationFrame(draw)
+        return
+      }
+      const x = (value: number) => rect.x + value * rect.scale
+      const y = (value: number) => rect.y + value * rect.scale
 
       const eventBoxes = eventsRef.current
         .filter((event) => event.bounding_box)
@@ -73,12 +84,12 @@ export function useCanvasOverlay({
         context.lineWidth = 2
         context.setLineDash(line.dashed ? [8, 6] : [])
         context.beginPath()
-        context.moveTo(line.x1 * scaleX, line.y1 * scaleY)
-        context.lineTo(line.x2 * scaleX, line.y2 * scaleY)
+        context.moveTo(x(line.x1), y(line.y1))
+        context.lineTo(x(line.x2), y(line.y2))
         context.stroke()
         if (line.label) {
           context.font = '12px ui-monospace, monospace'
-          context.fillText(line.label, line.x1 * scaleX + 6, line.y1 * scaleY - 7)
+          context.fillText(line.label, x(line.x1) + 6, y(line.y1) - 7)
         }
         context.restore()
       }
@@ -87,10 +98,10 @@ export function useCanvasOverlay({
         context.strokeStyle = box.color || '#0d9488'
         context.lineWidth = 2
         context.strokeRect(
-          box.x * scaleX,
-          box.y * scaleY,
-          box.width * scaleX,
-          box.height * scaleY
+          x(box.x),
+          y(box.y),
+          box.width * rect.scale,
+          box.height * rect.scale
         )
 
         if (box.label) {
@@ -99,7 +110,7 @@ export function useCanvasOverlay({
             : ''
           context.fillStyle = context.strokeStyle
           context.font = '12px ui-monospace, monospace'
-          context.fillText(`${box.label}${confidence}`, box.x * scaleX, box.y * scaleY - 5)
+          context.fillText(`${box.label}${confidence}`, x(box.x), y(box.y) - 5)
         }
       }
 

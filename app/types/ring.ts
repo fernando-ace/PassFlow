@@ -5,4 +5,4 @@ export interface RingDevice {
   capabilities: Record<string, unknown>
 }
 
-export type RingDeviceStatus = 'loading' | 'ready' | 'error'
+export type RingDeviceStatus = 'loading' | 'ready' | 'empty' | 'error'

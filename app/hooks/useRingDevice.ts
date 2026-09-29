@@ -2,21 +2,29 @@
 
 import { useEffect, useState } from 'react'
 import type { RingDevice, RingDeviceStatus } from '@/app/types/ring'
+import { selectDefaultRingDevice } from '@/lib/ring/deviceSelection.mjs'
 
 interface RingDeviceState {
+  devices: RingDevice[]
   device: RingDevice | null
   status: RingDeviceStatus
   error: string | null
 }
 
+interface UseRingDeviceState extends RingDeviceState {
+  selectDevice: (id: string) => void
+}
+
 const INITIAL_STATE: RingDeviceState = {
+  devices: [],
   device: null,
   status: 'loading',
   error: null,
 }
 
-export function useRingDevice(): RingDeviceState {
+export function useRingDevice(): UseRingDeviceState {
   const [state, setState] = useState<RingDeviceState>(INITIAL_STATE)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -41,17 +49,19 @@ export function useRingDevice(): RingDeviceState {
           throw new Error(result.error || 'Ring device discovery failed.')
         }
 
-        const device = result.devices?.[0] as RingDevice | undefined
-        if (!device) {
-          throw new Error('No Ring devices were found for this token.')
-        }
-
-        setState({ device, status: 'ready', error: null })
+        const devices = Array.isArray(result.devices) ? result.devices as RingDevice[] : []
+        setState({
+          devices,
+          device: selectDefaultRingDevice(devices, selectedId),
+          status: devices.length ? 'ready' : 'empty',
+          error: null,
+        })
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return
 
         setState({
           device: null,
+          devices: [],
           status: 'error',
           error: error instanceof Error ? error.message : 'Ring device discovery failed.',
         })
@@ -60,7 +70,12 @@ export function useRingDevice(): RingDeviceState {
 
     discoverDevice()
     return () => controller.abort()
-  }, [])
+  }, [selectedId])
 
-  return state
+  const selectDevice = (id: string) => {
+    setSelectedId(id)
+    setState((current) => ({ ...current, device: current.devices.find((item) => item.id === id) ?? null }))
+  }
+
+  return { ...state, selectDevice }
 }

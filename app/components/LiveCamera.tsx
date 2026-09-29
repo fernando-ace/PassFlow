@@ -37,6 +37,7 @@ const DEFAULT_CALIBRATION: CalibrationSettings = {
 
 interface LiveCameraProps {
   deviceId?: string
+  deviceOnline: boolean
   deviceStatus: RingDeviceStatus
   deviceError: string | null
   onCredentialChecking: () => void
@@ -48,6 +49,7 @@ interface LiveCameraProps {
 
 export function LiveCamera({
   deviceId,
+  deviceOnline,
   deviceStatus,
   deviceError,
   onCredentialChecking,
@@ -67,6 +69,7 @@ export function LiveCamera({
     status: 'idle',
     error: null,
   })
+  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 })
   const lastResultIdRef = useRef<string | null>(null)
   const lastPeopleResultIdRef = useRef<string | null>(null)
   const attachVideoRef = useCallback((node: HTMLVideoElement | null) => {
@@ -122,6 +125,8 @@ export function LiveCamera({
   const peopleDetected = typeof peopleResult?.data?.peopleDetected === 'number'
     ? peopleResult.data.peopleDetected
     : 0
+  const activeTracks = Array.isArray(peopleResult?.data?.tracks) ? peopleResult.data.tracks.length : 0
+  const sampleFps = typeof peopleResult?.data?.samplingFps === 'number' ? peopleResult.data.samplingFps : calibration.samplingFps
   const inferenceMs = typeof peopleResult?.data?.inferenceMs === 'number'
     ? peopleResult.data.inferenceMs
     : null
@@ -175,7 +180,14 @@ export function LiveCamera({
     }
   }, [credentialResultId, credentialToken, onCredentialChecking, onCredentialVerified])
 
-  const unavailable = deviceStatus !== 'ready' || !deviceId
+  const unavailable = deviceStatus !== 'ready' || !deviceId || !deviceOnline
+  const visionLabel = visionState.status === 'error'
+    ? 'Vision error'
+    : visionState.status === 'loading' || visionState.status === 'idle'
+      ? 'Model loading'
+      : streamActive
+        ? 'Processing video'
+        : 'Model ready · waiting for video'
   const error = streamError || deviceError
   const handleStartStream = useCallback(() => {
     onReset()
@@ -192,7 +204,11 @@ export function LiveCamera({
         Live camera
       </h1>
       <p className="mt-3 text-base text-passflow-muted">
-        Connect to your Ring device to view the live feed.
+        {deviceStatus === 'empty'
+          ? 'No compatible Ring cameras were found on the linked account.'
+          : deviceStatus === 'error'
+            ? deviceError || 'Ring camera discovery failed.'
+            : 'Connect to your selected Ring camera to view and analyze the live feed.'}
       </p>
 
       <div className="relative mt-7 aspect-video overflow-hidden rounded-xl bg-passflow-video text-white ring-1 ring-black/10">
@@ -203,6 +219,9 @@ export function LiveCamera({
           muted
           aria-label="Live video from the selected Ring device"
           className="h-full w-full object-contain"
+          onLoadedMetadata={(event) => setVideoSize({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })}
+          onResize={(event) => setVideoSize({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })}
+          onEmptied={() => setVideoSize({ width: 0, height: 0 })}
         />
         <canvas ref={attachCanvasRef} aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full" />
 
@@ -236,11 +255,7 @@ export function LiveCamera({
               ? 'text-red-300'
               : 'text-white'
         }`}>
-          {visionState.status === 'ready'
-            ? 'Vision ready'
-            : visionState.status === 'error'
-              ? 'Vision unavailable'
-              : 'Loading vision model'}
+          {visionLabel}
         </span>
 
         {streamActive && qrDetected ? (
@@ -258,11 +273,7 @@ export function LiveCamera({
               ? 'bg-passflow-danger/10 text-passflow-danger'
               : 'bg-passflow-soft text-passflow-muted'
         }`}>
-          {visionState.status === 'ready'
-            ? 'Vision ready'
-            : visionState.status === 'error'
-              ? 'Vision unavailable'
-              : 'Loading vision model'}
+          {visionLabel}
         </span>
         {!streamActive ? (
           <button
@@ -276,6 +287,8 @@ export function LiveCamera({
               ? 'Starting Live View…'
               : deviceStatus === 'loading'
                 ? 'Discovering device…'
+                : !deviceOnline
+                  ? 'Camera offline'
                 : 'Start Live View'}
           </button>
         ) : (
@@ -314,6 +327,17 @@ export function LiveCamera({
           The live session connects directly through PassFlow’s server-side Ring integration.
         </p>
       )}
+
+      {streamActive ? (
+        <p className="mt-3 text-xs leading-5 text-passflow-faint" aria-live="polite">
+          {videoSize.width > 0 && videoSize.height > 0
+            ? `${videoSize.width} × ${videoSize.height}`
+            : 'Waiting for video dimensions'}
+          {' · '}{sampleFps} samples/sec
+          {' · '}{inferenceMs === null ? 'Inference pending' : `${inferenceMs} ms inference`}
+          {' · '}{peopleDetected} people · {activeTracks} active tracks
+        </p>
+      ) : null}
 
       {visionState.status === 'error' ? (
         <div role="alert" className="mt-4 max-w-3xl rounded-lg border border-passflow-danger/25 bg-passflow-danger/5 px-4 py-3 text-sm leading-6 text-passflow-danger">

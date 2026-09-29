@@ -12,7 +12,7 @@ import { resetVideoProcessorSessions } from '@/lib/video-processors/registry'
 import { useCallback } from 'react'
 
 export default function PassFlow() {
-  const { device, status, error } = useRingDevice()
+  const { devices, device, status, error, selectDevice } = useRingDevice()
   const access = useAccessDecision()
   const resetSession = useCallback(() => {
     resetVideoProcessorSessions()
@@ -26,6 +26,7 @@ export default function PassFlow() {
         <div className="min-w-0 px-6 py-10 sm:px-8 lg:border-r lg:border-passflow-border lg:px-10 lg:py-12 xl:px-12">
           <LiveCamera
             deviceId={device?.id}
+            deviceOnline={device?.online ?? false}
             deviceStatus={status}
             deviceError={error}
             onCredentialChecking={access.credentialChecking}
@@ -38,7 +39,7 @@ export default function PassFlow() {
         </div>
 
         <aside className="border-t border-passflow-border bg-white px-6 py-10 sm:px-8 lg:border-t-0 lg:px-8 lg:py-12 xl:px-10">
-          <DevicePanel device={device} status={status} />
+          <DevicePanel devices={devices} device={device} status={status} onSelect={selectDevice} />
           <AccessDecision decision={access.decision} onReset={resetSession} />
           <AccessTimeline events={access.decision.events} />
         </aside>
