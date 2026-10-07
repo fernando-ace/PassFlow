@@ -43,7 +43,7 @@ The QR contains only a signed PassFlow token. The signing secret and credential 
 - **`app/api/webhook`** validates Ring's raw-body HMAC signature before processing events and broadcasting SSE updates.
 - **`app/api/ring/devices`** discovers devices and normalizes the Ring response for the UI.
 - **`app/api/ring/stream`** creates and closes Ring WHEP sessions. The access token never enters client code.
-- **`app/hooks/useRingDevice.ts`** manages browser-side discovery state without handling credentials.
+- **`app/hooks/useRingDevice.ts`** manages browser-side discovery state without handling credentials, prefers an online default camera, and supports selecting from the account's device list.
 - **`app/hooks/useWebRTCStream.ts`** manages the peer connection, SDP exchange, video attachment, errors, and cleanup.
 - **`lib/credentials/`** creates and verifies versioned HMAC-SHA256 credentials with explicit validity windows.
 - **`app/api/credentials`** creates signed credentials; **`app/api/credentials/verify`** returns one of five explicit verification statuses.
@@ -116,8 +116,9 @@ After the page loads:
 
 1. The Ring device area initially displays **Discovering device**.
 2. PassFlow calls its server-side `/api/ring/devices` route.
-3. The first device associated with the token should appear by name.
-4. Its Ring-reported state should display as **Online** or **Offline**.
+3. The selected device appears by name with its ID and Ring-reported **Online** or **Offline** state.
+4. If the account has multiple devices, choose a camera from the **Camera** selector. The default selection prefers an online camera; you can change it at any time.
+5. Live View can start only for a selected online camera. An empty device list or discovery error is shown in the camera panel.
 
 If no device appears, check the message beside the camera and in the Ring device area. Confirm that the token belongs to the expected Ring account and that the device is available in the Playground.
 
@@ -135,8 +136,10 @@ The response should contain a non-empty `devices` array. It must never contain t
 2. Confirm the selected device is online.
 3. Select **Start Live View**.
 4. PassFlow creates a browser WebRTC offer, sends the SDP to its server-side stream route, and exchanges it with Ring's WHEP endpoint.
-5. When the session is established, the Ring stream appears in the Live camera frame.
+5. When the session is established, the Ring stream appears in the Live camera frame and feeds the shared QR and person-detection processors.
 6. Select **Stop Live View** to close the peer connection and Ring session.
+
+While video is active, the camera panel reports received video dimensions, person-processing sample rate, latest inference time, detected people, and active tracks. Inference timing and model detections are browser/model measurements, not guarantees of physical-camera accuracy.
 
 Browser autoplay rules are handled by using a muted inline video element. Ring live verification still requires a real token, account, device, and network path.
 
@@ -302,8 +305,7 @@ The Playground's prerecorded video cannot satisfy this acceptance test, and the 
 
 - A live physical Ring account and device are still required for camera-in-the-loop QR acceptance. This is not yet verified.
 - Playground tokens are short-lived and must be replaced manually.
-- PassFlow currently selects the first discovered device.
-- There is no device picker.
+- Camera selection is held in browser state and resets if the page is reloaded.
 - Playground video is prerecorded, so the generated QR cannot be physically presented to that synthetic feed. Final camera-in-the-loop acceptance requires a real Ring camera pointed at the displayed pass.
 - Person detection is heuristic and depends on the browser downloading the COCO-SSD model while the app starts. The 0.55 confidence threshold, 2 FPS sampling rate, tracker tolerances, and entrance boundary require real-camera calibration.
 - There is no database, account system, smart-lock control, payment flow, notification system, facial recognition, or production deployment.
