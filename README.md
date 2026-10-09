@@ -2,7 +2,7 @@
 
 PassFlow is a privacy-first visual access-control system for small businesses. It is being built for the Ring track of the Amazon App Dev Challenge.
 
-This repository covers a focused visual-access flow: connect to a Ring live-view session, verify a signed QR credential, detect and track people locally in sampled video frames, infer entrance events using either a directional boundary or a doorbell close-approach disappearance, and classify authorized, possible-tailgating, and unauthorized entry events.
+This repository covers a focused visual-access flow: connect to a Ring live-view session, verify a signed QR credential, detect and track people locally in sampled video frames, infer entrance events using either a directional boundary or a sustained close approach followed by full door-side departure, and classify authorized, possible-tailgating, and unauthorized entry events.
 
 PassFlow began from Amazon's official [Ring API Hello World](https://github.com/AmazonAppDev/ring-api-helloworld) sample. The Ring integration remains the authoritative foundation; the product UI and client state are kept separate from the server-side Ring routes.
 
@@ -50,7 +50,7 @@ The QR contains only a signed PassFlow token. The signing secret and credential 
 - **`lib/video-processors/qrDecoder.mjs`** is the shared local QR decoder used by both Ring frames and the development harness.
 - **`lib/video-processors/qrCredentialProcessor.ts`** turns decoded values into processor results and applies an 8-second, per-value duplicate cooldown before verification.
 - **`lib/credentials/verifyQrCredential.ts`** classifies non-PassFlow QR values locally and sends signed PassFlow values to the server verification route. Both the Ring path and development harness use it.
-- **`lib/video-processors/personDetectionProcessor.ts`** begins warming browser-side COCO-SSD when the app loads, keeps it warm across stream resets, reports loading/ready/failure state, and rate-limits inference to 2 FPS by default.
+- **`lib/video-processors/personDetectionProcessor.ts`** begins warming browser-side COCO-SSD when the app loads, keeps it warm across stream resets, reports loading/ready/failure state, and uses the more accurate MobileNet v2 variant at a target of 5 FPS and 40% confidence by default.
 - **`lib/entrance/trackerCore.mjs`** assigns anonymous short-lived track IDs using IoU and bottom-center distance, then emits one entering event when a track crosses the configured boundary in the expected direction.
 - **`lib/access/decisionCore.mjs`** combines verified credentials and entrance events in a configurable 12-second window. The first distinct entrant is authorized; additional entrants trigger possible tailgating; entrants without an active window are unauthorized.
 
@@ -241,13 +241,13 @@ The harness supports:
 
 - server-generated signed PassFlow QR codes with valid, expired, and not-yet-valid windows;
 - local static PNG, JPEG, and WebP QR images;
-- local prerecorded doorway or QR videos, sampled at 2 FPS;
+- local prerecorded doorway or QR videos, with independent QR and person processing;
 - generated non-PassFlow QR codes; and
 - an immediate repeated scan that records the first decision and confirms the duplicate is suppressed;
 - person bounding boxes, confidence, anonymous track IDs, and the active entrance calibration when calibration is enabled; and
 - credential-plus-video and no-credential video controls for authorized, tailgating, unauthorized, and no-crossing scenarios.
 
-The main Ring screen also exposes an opt-in calibration panel for the live feed in development and production. It supports Boundary and Doorbell entrance modes, remembers the selected mode and Doorbell near-camera threshold in this browser, and adjusts mode-specific calibration plus person confidence, QR/person sampling rates, and the credential window. Anyone with the production URL can adjust calibration in their own browser. Doorbell disappearance is an inferred entry, not physical threshold confirmation. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered physical-device checklist and the values to record.
+The main Ring screen also exposes an opt-in calibration panel for the live feed in development and production. It supports Boundary and Doorbell entrance modes, remembers all calibration values, including confidence, sampling rates, Doorbell near-camera threshold, and exit side in this browser, and adjusts mode-specific calibration plus person confidence, QR/person sampling rates, and the credential window. Anyone with the production URL can adjust calibration in their own browser. Doorbell inference requires sustained approach, movement toward the selected frame edge, and three seconds fully out of view on fresh video; ordinary detection loss, knocking, and retreat do not count. Ambiguous losses remain unconfirmed. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered physical-device checklist and the values to record.
 
 Static images and video files remain local to the browser. Every video frame passes through the same sampled QR and person processors as Ring video. Every new PassFlow value then passes through the same server verification request used by `LiveCamera`, while person detections pass through the shared tracker, boundary, and access-decision policy.
 
@@ -260,7 +260,7 @@ Static images and video files remain local to the browser. Every video frame pas
 - Required credential fields and validity windows are validated.
 - Verification returns distinct `valid`, `expired`, `not-yet-valid`, `malformed`, and `invalid-signature` states.
 - Generated PassFlow QR values and ordinary non-PassFlow QR values decode through the shared decoder.
-- Frame processing runs at 2 FPS by default, suppresses repeat decisions for the same value for 8 seconds, and resets transient QR/tracker state without discarding the warmed model.
+- QR scanning runs in a worker at a target of 8 FPS with an 8-second per-value cooldown. Person processing targets 5 FPS. Session resets clear transient QR/tracker state while keeping the model warm.
 - Deterministic tests verify directional crossing, non-crossing near-door motion, reverse-motion rejection, duplicate track/count suppression, entry-window expiry, one authorized entrant, a second entrant triggering possible tailgating, and unauthorized entry.
 - The development harness exercises generated QR codes, static QR images, local prerecorded doorway/QR video, non-PassFlow values, and model-based person detections without changing the Ring stream architecture.
 - Ring access tokens and signing secrets remain server-only; no `NEXT_PUBLIC_` secret variables are used.
@@ -272,7 +272,7 @@ Static images and video files remain local to the browser. Every video frame pas
 - A non-PassFlow QR produces **Invalid credential** without being sent to the credential API.
 - Scanning the same generated credential twice immediately emits one decision and suppresses the duplicate.
 - Local static QR images use the shared decoder and verification flow.
-- Local prerecorded video is sampled by the same 2 FPS processors used for Ring video. COCO-SSD person results expose confidence and anonymous track boxes; development mode also shows track IDs and the entrance boundary.
+- Local prerecorded video uses the same independent processors and direct event delivery as Ring video. COCO-SSD person results expose confidence and anonymous track boxes; development mode also shows track IDs and the entrance boundary.
 
 Model-based prerecorded-video results are heuristic and must be reported separately from deterministic policy tests. Neither is evidence that a physical Ring camera can resolve a phone-displayed QR or reliably detect people through its real optics, viewpoint, compression, lighting, motion, WebRTC transport, and stream resolution.
 

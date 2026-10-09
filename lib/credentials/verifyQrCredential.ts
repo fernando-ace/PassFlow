@@ -9,7 +9,7 @@ const verificationStatuses = new Set<VerificationResult['status']>([
 ])
 
 export function isPassFlowQrValue(value: string) {
-  return value.startsWith(`${PASSFLOW_TOKEN_PREFIX}.`)
+  return value.startsWith(`${PASSFLOW_TOKEN_PREFIX}.`) || value.startsWith('pf1.')
 }
 
 export async function verifyQrCredential(

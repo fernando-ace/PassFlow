@@ -1,4 +1,4 @@
-export const PASSFLOW_TOKEN_PREFIX = 'pf1'
+export const PASSFLOW_TOKEN_PREFIX = 'pf2'
 
 export interface PassCredential {
   version: 1

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RingDeviceStatus } from '@/app/types/ring'
 import { verifyQrCredential } from '@/lib/credentials/verifyQrCredential'
+import { createCredentialScan } from '@/lib/credentials/scanCore.mjs'
 import type { VerificationResult } from '@/lib/credentials/types'
 import { useCanvasOverlay } from '@/app/hooks/useCanvasOverlay'
 import { useWebRTCStream } from '@/app/hooks/useWebRTCStream'
@@ -12,6 +13,7 @@ import {
   QR_CREDENTIAL_PROCESSOR_ID,
 } from '@/lib/video-processors/qrCredentialProcessor'
 import { useVideoProcessing } from '@/lib/video-processors/useVideoProcessing'
+import { processorRegistry } from '@/lib/video-processors/registry'
 import {
   ensurePersonDetectionProcessorRegistered,
   getPersonDetectionProcessor,
@@ -25,19 +27,13 @@ import { ApertureIcon, PlayIcon, StopIcon } from './icons'
 import {
   DEFAULT_ENTRANCE_PREFERENCES,
   ENTRANCE_PREFERENCES_STORAGE_KEY,
+  LEGACY_ENTRANCE_PREFERENCES_STORAGE_KEY,
   parseEntrancePreferences,
 } from '@/lib/entrance/preferences.mjs'
 
 const NO_EVENTS: DetectionEvent[] = []
 const DEFAULT_CALIBRATION: CalibrationSettings = {
   ...DEFAULT_ENTRANCE_PREFERENCES,
-  boundaryPositionRatio: 0.62,
-  enteringDirection: 'positive',
-  neutralZoneWidthRatio: 0.07,
-  minimumConfidence: 0.55,
-  qrSamplingFps: 2,
-  samplingFps: 2,
-  entryWindowSeconds: 12,
 }
 
 interface LiveCameraProps {
@@ -68,6 +64,16 @@ export function LiveCamera({
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null)
   const [qrDetected, setQrDetected] = useState(false)
+  const [qrStatus, setQrStatus] = useState('scanning')
+  const credentialCallbacks = useRef({ onCredentialChecking, onCredentialVerified })
+  credentialCallbacks.current = { onCredentialChecking, onCredentialVerified }
+  const [scanner] = useState(() => createCredentialScan({
+    verify: verifyQrCredential,
+    checking: () => credentialCallbacks.current.onCredentialChecking(),
+    verified: (result: VerificationResult) => credentialCallbacks.current.onCredentialVerified(result),
+    status: (status: string) => setQrStatus(status),
+  }))
+  const indicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [calibrationEnabled, setCalibrationEnabled] = useState(false)
   const [calibration, setCalibration] = useState(DEFAULT_CALIBRATION)
   const [entrancePreferencesLoaded, setEntrancePreferencesLoaded] = useState(false)
@@ -76,8 +82,6 @@ export function LiveCamera({
     error: null,
   })
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 })
-  const lastResultIdRef = useRef<string | null>(null)
-  const lastPeopleResultIdRef = useRef<string | null>(null)
   const attachVideoRef = useCallback((node: HTMLVideoElement | null) => {
     videoRef.current = node
     setVideoElement(node)
@@ -104,6 +108,7 @@ export function LiveCamera({
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(ENTRANCE_PREFERENCES_STORAGE_KEY)
+        ?? window.localStorage.getItem(LEGACY_ENTRANCE_PREFERENCES_STORAGE_KEY)
       const preferences = parseEntrancePreferences(saved)
       setCalibration((current) => ({ ...current, ...preferences }))
     } catch {
@@ -116,14 +121,11 @@ export function LiveCamera({
   useEffect(() => {
     if (!entrancePreferencesLoaded) return
     try {
-      window.localStorage.setItem(ENTRANCE_PREFERENCES_STORAGE_KEY, JSON.stringify({
-        entranceMode: calibration.entranceMode,
-        doorbellNearCameraHeightRatio: calibration.doorbellNearCameraHeightRatio,
-      }))
+      window.localStorage.setItem(ENTRANCE_PREFERENCES_STORAGE_KEY, JSON.stringify(calibration))
     } catch {
       // The selected mode still works for this page session without storage.
     }
-  }, [calibration.doorbellNearCameraHeightRatio, calibration.entranceMode, entrancePreferencesLoaded])
+  }, [calibration, entrancePreferencesLoaded])
 
   useEffect(() => {
     getPersonDetectionProcessor()?.configure(calibration)
@@ -131,15 +133,26 @@ export function LiveCamera({
     onEntryWindowDurationChange(calibration.entryWindowSeconds * 1_000)
   }, [calibration, onEntryWindowDurationChange])
 
+  const handleProcessingResult = useCallback((result: ProcessorResult) => {
+    if (result.processorId === PERSON_DETECTION_PROCESSOR_ID) onPeopleResult(result)
+    if (result.processorId !== QR_CREDENTIAL_PROCESSOR_ID || typeof result.data?.token !== 'string') return
+    setQrDetected(true)
+    if (indicatorTimer.current) clearTimeout(indicatorTimer.current)
+    indicatorTimer.current = setTimeout(() => setQrDetected(false), 1800)
+    const version = getQrCredentialProcessor()?.getSessionVersion()
+    void scanner.submit(result.data.token, () => getQrCredentialProcessor()?.getSessionVersion() === version)
+  }, [onPeopleResult, scanner])
+
   const { streamActive, streamStarting, streamError, startStream, stopStream } = useWebRTCStream({
     videoRef,
     deviceId,
   })
-  const { results } = useVideoProcessing({
+  const { results, streamFresh } = useVideoProcessing({
     video: videoElement,
     canvas: canvasElement,
     enabled: streamActive,
     fps: Math.max(calibration.qrSamplingFps, calibration.samplingFps),
+    onResult: handleProcessingResult,
   })
   useCanvasOverlay({
     videoRef,
@@ -148,15 +161,12 @@ export function LiveCamera({
     results,
     showDebug: calibrationEnabled,
   })
-  const credentialResult = results.get(QR_CREDENTIAL_PROCESSOR_ID)
-  const credentialResultId = credentialResult?.id
-  const credentialToken = credentialResult?.data?.token
   const peopleResult = results.get(PERSON_DETECTION_PROCESSOR_ID)
   const peopleDetected = typeof peopleResult?.data?.peopleDetected === 'number'
     ? peopleResult.data.peopleDetected
     : 0
-  const activeTracks = Array.isArray(peopleResult?.data?.tracks) ? peopleResult.data.tracks.length : 0
-  const sampleFps = typeof peopleResult?.data?.samplingFps === 'number' ? peopleResult.data.samplingFps : calibration.samplingFps
+  const activeTracks = Array.isArray(peopleResult?.data?.tracks) ? peopleResult.data.tracks.filter((track) => track.fresh).length : 0
+  const sampleFps = typeof peopleResult?.data?.actualFps === 'number' ? peopleResult.data.actualFps : 0
   const inferenceMs = typeof peopleResult?.data?.inferenceMs === 'number'
     ? peopleResult.data.inferenceMs
     : null
@@ -168,47 +178,22 @@ export function LiveCamera({
   ))
 
   useEffect(() => {
-    if (!peopleResult || peopleResult.id === lastPeopleResultIdRef.current) return
-    lastPeopleResultIdRef.current = peopleResult.id
-    onPeopleResult(peopleResult)
-  }, [onPeopleResult, peopleResult])
+    scanner.reset()
+    setQrDetected(false)
+    return () => {
+      scanner.reset()
+      if (indicatorTimer.current) clearTimeout(indicatorTimer.current)
+    }
+  }, [scanner, deviceId, streamActive])
+
+  useEffect(() => processorRegistry.subscribe(() => {
+    scanner.reset()
+    setQrDetected(false)
+  }), [scanner])
 
   useEffect(() => {
-    if (
-      !credentialResultId
-      || credentialResultId === lastResultIdRef.current
-      || typeof credentialToken !== 'string'
-    ) return
-
-    lastResultIdRef.current = credentialResultId
-    setQrDetected(true)
-    const indicatorTimer = window.setTimeout(() => setQrDetected(false), 1800)
-    const controller = new AbortController()
-
-    onCredentialChecking()
-    void verifyQrCredential(credentialToken, controller.signal)
-      .then((verification) => {
-        if (!controller.signal.aborted) {
-          onCredentialVerified(verification)
-        }
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          onCredentialVerified({
-              valid: false,
-              status: 'malformed',
-              message: error instanceof Error
-                ? error.message
-                : 'PassFlow could not verify this credential. Try again.',
-          })
-        }
-      })
-
-    return () => {
-      controller.abort()
-      window.clearTimeout(indicatorTimer)
-    }
-  }, [credentialResultId, credentialToken, onCredentialChecking, onCredentialVerified])
+    onReset()
+  }, [deviceId, onReset])
 
   const unavailable = deviceStatus !== 'ready' || !deviceId || !deviceOnline
   const visionLabel = visionState.status === 'error'
@@ -362,11 +347,17 @@ export function LiveCamera({
           {videoSize.width > 0 && videoSize.height > 0
             ? `${videoSize.width} × ${videoSize.height}`
             : 'Waiting for video dimensions'}
-          {' · '}{sampleFps} samples/sec
+          {' · '}{sampleFps} actual person samples/sec
+          {' · '}{streamFresh ? 'Fresh video' : 'Video paused or stalled · entry inference suspended'}
           {' · '}{inferenceMs === null ? 'Inference pending' : `${inferenceMs} ms inference`}
           {' · '}{peopleDetected} people · {activeTracks} active tracks
         </p>
       ) : null}
+
+      {streamActive ? <p className="mt-2 text-sm text-passflow-muted" role="status">
+        QR: {qrDetected && qrStatus === 'scanning' ? 'Detected' : qrStatus.charAt(0).toUpperCase() + qrStatus.slice(1)}
+        {' · '}Hold the full-screen code steady. Adjust screen brightness if the feed shows glare.
+      </p> : null}
 
       {visionState.status === 'error' ? (
         <div role="alert" className="mt-4 max-w-3xl rounded-lg border border-passflow-danger/25 bg-passflow-danger/5 px-4 py-3 text-sm leading-6 text-passflow-danger">

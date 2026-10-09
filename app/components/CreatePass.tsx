@@ -2,10 +2,13 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 import type { PassCredential } from '@/lib/credentials/types'
+import { QrPresentation } from './QrPresentation'
+import { qrPresentationOptions } from '@/lib/credentials/qrPresentation.mjs'
 
 interface CreatedPass {
   credential: PassCredential
   qrDataUrl: string
+  token: string
 }
 
 function toDateTimeLocal(date: Date) {
@@ -65,13 +68,9 @@ export function CreatePass() {
       if (!response.ok) throw new Error(result.error || 'Pass creation failed.')
 
       const QRCode = await import('qrcode')
-      const qrDataUrl = await QRCode.toDataURL(result.token, {
-        errorCorrectionLevel: 'M',
-        margin: 2,
-        width: 360,
-        color: { dark: '#0f1d2e', light: '#ffffff' },
-      })
-      setCreatedPass({ credential: result.credential, qrDataUrl })
+      const modules = QRCode.create(result.token, { errorCorrectionLevel: 'M' }).modules.size
+      const qrDataUrl = await QRCode.toDataURL(result.token, qrPresentationOptions(modules))
+      setCreatedPass({ credential: result.credential, qrDataUrl, token: result.token })
     } catch (error) {
       setCreatedPass(null)
       setError(error instanceof Error ? error.message : 'Pass creation failed.')
@@ -135,6 +134,7 @@ export function CreatePass() {
             <div className="text-center">
               <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-passflow-muted">Present this QR</p>
               <img src={createdPass.qrDataUrl} alt={`QR credential for ${createdPass.credential.displayName}`} className="mx-auto aspect-square w-full max-w-80 rounded-lg bg-white p-2 shadow-sm ring-1 ring-passflow-border" />
+              <QrPresentation token={createdPass.token} name={createdPass.credential.displayName} />
               <p className="mt-4 text-base font-semibold text-passflow-ink">{createdPass.credential.displayName}</p>
               <p className="mt-1 text-sm text-passflow-muted">{createdPass.credential.location}</p>
               <p className="mt-1 text-xs leading-5 text-passflow-faint">

@@ -70,7 +70,7 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
             onChange={(event) => update('entranceMode', event.target.value as 'boundary' | 'doorbell')}
           >
             <option value="boundary">Boundary crossing</option>
-            <option value="doorbell">Doorbell close approach</option>
+            <option value="doorbell">Doorbell approach and full exit</option>
           </select>
         </label>
         {settings.entranceMode === 'boundary' ? <>
@@ -84,6 +84,13 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
           </label>
           <NumberControl label="Neutral-zone width" value={Math.round(settings.neutralZoneWidthRatio * 100)} min={0} max={20} step={1} suffix="%" onChange={(value) => update('neutralZoneWidthRatio', value / 100)} />
         </> : <>
+          <label className="block">
+            <span className="text-xs font-semibold text-passflow-ink">Door exit side</span>
+            <select className="form-control mt-2" value={settings.doorbellExitSide} onChange={(event) => update('doorbellExitSide', event.target.value as 'left' | 'right')}>
+              <option value="right">Right edge</option>
+              <option value="left">Left edge</option>
+            </select>
+          </label>
           <NumberControl
             label="Near-camera size threshold"
             value={Math.round(settings.doorbellNearCameraHeightRatio * 100)}
@@ -94,7 +101,7 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
             onChange={(value) => update('doorbellNearCameraHeightRatio', value / 100)}
           />
           <p className="text-xs leading-5 text-passflow-muted sm:col-span-2">
-            A person is counted after reaching this size and then staying out of view until their track expires. This infers entry; it cannot confirm that someone crossed a physical doorway.
+            Entry is inferred only after a sustained close approach, movement through the selected edge, and three seconds fully out of view. Knocking, retreat, and ambiguous detection loss do not count.
           </p>
         </>}
         <NumberControl label="Person confidence" value={Math.round(settings.minimumConfidence * 100)} min={20} max={95} step={5} suffix="%" onChange={(value) => update('minimumConfidence', value / 100)} />

@@ -10,6 +10,8 @@ interface CrossingData {
   trackId: number
   direction: 'entering'
   timestamp: number
+  evidence?: 'inferred' | 'boundary'
+  confirmedAt?: number
 }
 
 function readCrossings(result: ProcessorResult): CrossingData[] {
@@ -45,7 +47,7 @@ export function useAccessDecision() {
       result.timestamp,
     )
     for (const crossing of readCrossings(result)) {
-      next = engine.recordEntrant(crossing.trackId, crossing.timestamp)
+      next = engine.recordEntrant(crossing.trackId, crossing.timestamp, crossing.evidence, crossing.confirmedAt)
     }
     setDecision(next as AccessDecisionState)
   }, [engine])

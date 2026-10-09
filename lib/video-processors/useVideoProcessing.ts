@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { processorRegistry } from './registry'
 import { ProcessorResult, VideoProcessor } from './types'
-import { createSingleFlightGate, resetVideoSource } from './processingCore.mjs'
+import { createFrameClock, createResultLane, resetVideoSource } from './processingCore.mjs'
 
 interface UseVideoProcessingOptions {
   video: HTMLVideoElement | null
   canvas: HTMLCanvasElement | null
   enabled: boolean
   fps?: number
+  onResult?: (result: ProcessorResult) => void
 }
 
 /**
@@ -22,13 +23,18 @@ export function useVideoProcessing({
   canvas,
   enabled,
   fps = 2,
+  onResult,
 }: UseVideoProcessingOptions) {
   const [displayResults, setDisplayResults] = useState<Map<string, ProcessorResult>>(new Map())
   const [processors, setProcessors] = useState<VideoProcessor[]>([])
 
   const frameCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const resultsRef = useRef<Map<string, ProcessorResult>>(new Map())
-  const inferenceGateRef = useRef(createSingleFlightGate())
+  const lanesRef = useRef(new Map<string, ReturnType<typeof createResultLane>>())
+  const onResultRef = useRef(onResult)
+  onResultRef.current = onResult
+  const [streamFresh, setStreamFresh] = useState(false)
+  const lastCaptureRef = useRef(0)
 
   // Subscribe to processor registry changes
   useEffect(() => {
@@ -47,6 +53,7 @@ export function useVideoProcessing({
     if (enabled && video) return
     resetVideoSource([], resultsRef.current)
     setDisplayResults(new Map())
+    setStreamFresh(false)
   }, [enabled, video])
 
   // Batch UI updates at 2Hz to reduce re-renders
@@ -54,7 +61,9 @@ export function useVideoProcessing({
     if (!enabled) return
 
     const interval = setInterval(() => {
-      setDisplayResults(new Map(resultsRef.current))
+      const now = Date.now()
+      setDisplayResults(new Map(Array.from(resultsRef.current).filter(([, result]) => now - result.timestamp < 1_500)))
+      setStreamFresh(now - lastCaptureRef.current < 1_000)
     }, 500)
 
     return () => clearInterval(interval)
@@ -71,6 +80,16 @@ export function useVideoProcessing({
     if (!frameCanvas || !frameCtx) return
     const interval = 1000 / fps
     const activeProcessors = processors.filter((processor) => processor.enabled)
+    const clock = createFrameClock()
+    const hasFrameCallbacks = typeof video.requestVideoFrameCallback === 'function'
+    let presentedFrames = 0
+    let presentedAt = 0
+    let frameCallbackId = 0
+    const observeFrame = (_time: number, metadata: VideoFrameCallbackMetadata) => {
+      presentedFrames = metadata.presentedFrames
+      presentedAt = Date.now()
+      if (!cancelled) frameCallbackId = video.requestVideoFrameCallback(observeFrame)
+    }
 
     let lastTime = 0
     let cancelled = false
@@ -80,7 +99,7 @@ export function useVideoProcessing({
       if (!cancelled) animationId = requestAnimationFrame(processFrame)
     }
 
-    const processFrame = async (timestamp: number) => {
+    const processFrame = (timestamp: number) => {
       if (cancelled) return
 
       if (timestamp - lastTime < interval) {
@@ -93,44 +112,57 @@ export function useVideoProcessing({
         queueNextFrame()
         return
       }
-      if (!inferenceGateRef.current.acquire()) {
+      const now = Date.now()
+      const qualityFrames = video.getVideoPlaybackQuality?.().totalVideoFrames
+      const frameIdentity = hasFrameCallbacks ? presentedFrames : qualityFrames ?? video.currentTime
+      if (hasFrameCallbacks && presentedFrames === 0) { queueNextFrame(); return }
+      const context = clock.sample(frameIdentity, now)
+      if (!context) {
         queueNextFrame()
         return
       }
 
       try {
-        frameCanvas.width = video.videoWidth
-        frameCanvas.height = video.videoHeight
+        const freshnessVerified = hasFrameCallbacks ? now - presentedAt < 1_000 : typeof qualityFrames === 'number'
+        context.healthy &&= freshnessVerified
+        if (freshnessVerified) lastCaptureRef.current = context.capturedAt
+        if (frameCanvas.width !== video.videoWidth) frameCanvas.width = video.videoWidth
+        if (frameCanvas.height !== video.videoHeight) frameCanvas.height = video.videoHeight
         frameCtx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height)
         const frame = frameCtx.getImageData(0, 0, frameCanvas.width, frameCanvas.height)
 
         for (const processor of activeProcessors) {
-          try {
-            const result = await processor.process(frame, canvas, video)
+          let lane = lanesRef.current.get(processor.id)
+          if (!lane) { lane = createResultLane(); lanesRef.current.set(processor.id, lane) }
+          const session = processor.getSessionVersion?.()
+          void lane.run(() => processor.process(frame, canvas, video, context), (result: ProcessorResult) => {
             if (cancelled) return
-            if (result) resultsRef.current.set(processor.id, result)
-            else resultsRef.current.delete(processor.id)
-          } catch (err) {
+            resultsRef.current.set(processor.id, result)
+            onResultRef.current?.(result)
+          }, (err: unknown) => {
+            processor.resetSession?.()
+            resultsRef.current.delete(processor.id)
             console.error(`Processor ${processor.id} error:`, err)
-          }
+          }, () => !cancelled && processor.getSessionVersion?.() === session)
         }
-      } finally {
-        inferenceGateRef.current.release()
+      } catch (err) {
+        activeProcessors.forEach((processor) => processor.resetSession?.())
+        console.error('Video frame capture failed:', err)
       }
       queueNextFrame()
     }
 
-    void Promise.all(activeProcessors.map((processor) => processor.init?.()))
-      .catch((error) => {
-        console.error('Video processor initialization failed:', error)
-      })
-      .finally(() => {
-        if (!cancelled) animationId = requestAnimationFrame(processFrame)
-      })
+    activeProcessors.forEach((processor) => {
+      void processor.init?.().catch((error) => console.error('Video processor initialization failed:', error))
+    })
+    if (hasFrameCallbacks) frameCallbackId = video.requestVideoFrameCallback(observeFrame)
+    animationId = requestAnimationFrame(processFrame)
 
     return () => {
       cancelled = true
       cancelAnimationFrame(animationId)
+      if (hasFrameCallbacks) video.cancelVideoFrameCallback(frameCallbackId)
+      lanesRef.current.forEach((lane) => lane.reset())
       resetVideoSource(activeProcessors, resultsRef.current)
     }
   }, [enabled, video, canvas, fps, processors])
@@ -154,5 +186,6 @@ export function useVideoProcessing({
     results: displayResults,
     toggleProcessor,
     enabledCount: processors.filter(p => p.enabled).length,
+    streamFresh,
   }
 }

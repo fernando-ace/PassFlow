@@ -83,8 +83,7 @@ export function DevQrHarness() {
   const overlayRef = useRef<HTMLCanvasElement | null>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const [overlayElement, setOverlayElement] = useState<HTMLCanvasElement | null>(null)
-  const lastVideoResultId = useRef<string | null>(null)
-  const lastPeopleResultId = useRef<string | null>(null)
+  const processingHandlerRef = useRef<(result: ProcessorResult) => void>(() => {})
   const staticUrlRef = useRef<string | null>(null)
   const videoUrlRef = useRef<string | null>(null)
   const verificationControllerRef = useRef<AbortController | null>(null)
@@ -114,7 +113,8 @@ export function DevQrHarness() {
     video: videoElement,
     canvas: overlayElement,
     enabled: videoRunning,
-    fps: 2,
+    fps: 8,
+    onResult: (result) => processingHandlerRef.current(result),
   })
   useCanvasOverlay({
     videoRef,
@@ -134,15 +134,16 @@ export function DevQrHarness() {
 
     verificationControllerRef.current?.abort()
     const controller = new AbortController()
+    const session = processor.getSessionVersion()
     verificationControllerRef.current = controller
     credentialChecking()
     try {
       const verification = await verifyQrCredential(value, controller.signal)
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted || session !== processor.getSessionVersion()) return
       credentialVerified(verification)
       record(source, statusLabel(verification), verification.message)
     } catch (error) {
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted || session !== processor.getSessionVersion()) return
       const failure: VerificationResult = {
         valid: false,
         status: 'malformed',
@@ -151,12 +152,12 @@ export function DevQrHarness() {
       credentialVerified(failure)
       record(source, 'ERROR', failure.message)
     }
-  }, [credentialChecking, credentialVerified, record])
+  }, [credentialChecking, credentialVerified, record, processor])
 
   const scanImageUrl = useCallback(async (url: string, source: string) => {
     const frame = await imageDataFromUrl(url)
     const result = await processor.process(frame)
-    if (!result) {
+    if (!result || typeof result.data?.token !== 'string') {
       record(source, 'SUPPRESSED / NO QR', 'No new QR decision was emitted.')
       return null
     }
@@ -164,20 +165,15 @@ export function DevQrHarness() {
     return result
   }, [processor, record, verifyResult])
 
-  const videoResult = results.get(QR_CREDENTIAL_PROCESSOR_ID)
   const peopleResult = results.get(PERSON_DETECTION_PROCESSOR_ID)
-  useEffect(() => {
-    if (!videoResult || videoResult.id === lastVideoResultId.current) return
-    lastVideoResultId.current = videoResult.id
-    void verifyResult(videoResult, 'Prerecorded video')
-  }, [videoResult, verifyResult])
-
-  useEffect(() => {
-    if (!peopleResult || peopleResult.id === lastPeopleResultId.current) return
-    lastPeopleResultId.current = peopleResult.id
-    processPeopleResult(peopleResult)
-
-    const crossings = peopleResult.data?.crossings
+  processingHandlerRef.current = (result) => {
+    if (result.processorId === QR_CREDENTIAL_PROCESSOR_ID) {
+      void verifyResult(result, 'Prerecorded video')
+      return
+    }
+    if (result.processorId !== PERSON_DETECTION_PROCESSOR_ID) return
+    processPeopleResult(result)
+    const crossings = result.data?.crossings
     if (Array.isArray(crossings) && crossings.length) {
       record(
         'Entrance crossing',
@@ -185,7 +181,7 @@ export function DevQrHarness() {
         `Track ${crossings.map((crossing) => crossing.trackId).join(', ')} crossed the configured boundary.`,
       )
     }
-  }, [peopleResult, processPeopleResult, record])
+  }
 
   async function generatePass() {
     setBusy(true)
@@ -211,7 +207,7 @@ export function DevQrHarness() {
       const QRCode = await import('qrcode')
       const dataUrl = await QRCode.toDataURL(body.token, {
         errorCorrectionLevel: 'M',
-        margin: 3,
+        margin: 4,
         width: 420,
       })
       await processor.init()
@@ -246,7 +242,7 @@ export function DevQrHarness() {
     try {
       const QRCode = await import('qrcode')
       const dataUrl = await QRCode.toDataURL('https://example.com/not-passflow', {
-        margin: 3,
+        margin: 4,
         width: 420,
       })
       await processor.init()

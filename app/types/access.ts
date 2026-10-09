@@ -40,6 +40,7 @@ export interface AccessDecisionState {
   entryWindowRemainingMs: number
   entrantsCounted: number
   peopleDetected: number
+  entryEvidence: 'inferred' | 'boundary' | null
   lastEventAt: number | null
   events: AccessEvent[]
 }

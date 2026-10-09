@@ -59,6 +59,7 @@ class VideoProcessorRegistry implements ProcessorRegistry {
 
   resetSessions(): void {
     this.processors.forEach((processor) => processor.resetSession?.())
+    this.notifyListeners()
   }
 }
 

@@ -70,7 +70,8 @@ export interface VideoProcessor {
   process(
     frame: ImageData,
     canvas: HTMLCanvasElement,
-    video: HTMLVideoElement
+    video: HTMLVideoElement,
+    context?: { capturedAt: number; healthy: boolean }
   ): Promise<ProcessorResult | null>
   
   /**
@@ -80,6 +81,7 @@ export interface VideoProcessor {
 
   /** Clear transient per-access-session state without unloading heavy resources. */
   resetSession?(): void
+  getSessionVersion?(): number
 }
 
 export interface ProcessorRegistry {

@@ -97,7 +97,7 @@ Do not register placeholder processors merely to populate the UI. Add a processo
 
 The entrance defaults live in `lib/entrance/config.mjs`. Boundary mode remains the default: it uses a horizontal boundary at 62% of frame height, a 3.5% half-width neutral zone, and positive-axis inbound movement. A track counts once only after moving from the outside side through or across the neutral zone to the inside side.
 
-Doorbell mode is available in the opt-in Ring calibration panel in development and production. It marks a person near the camera when their detected box reaches the configured fraction of frame height (65% by default). The person must then remain undetected until the normal track-expiry grace period completes before one entrant event is emitted. Brief detection gaps that recover before expiry do not count. This is an inferred entry signal: it cannot establish that a person crossed a physical doorway. The mode and near-camera threshold are remembered in browser local storage; other calibration values remain session-only.
+Doorbell mode defaults to right-edge departure. A person must grow at least 15% from their initial detected height, remain above the close threshold (65% by default) for at least three fresh detections spanning 600 ms, and move toward the exit edge until their box reaches the outermost 10% of the frame. Only then can three seconds of fresh absence produce an `inferred` event. Retreat, partial visibility/reacquisition, and blocked exit areas cancel the candidate. Missed tracks remain internal; overlays show fresh detections only. Model/capture errors, long inference gaps, and stalled video interrupt pending absence. Up to two lost-track crops are rechecked per sample; incomplete recovery coverage suspends inference rather than treating unchecked people as absent. All calibration settings persist in versioned local storage, with migration from the old mode/threshold preferences.
 
 When calibration is enabled, overlays show person boxes, confidence, and track IDs. Boundary mode draws the boundary and neutral-zone edges; Doorbell mode highlights boxes that reached the near-camera threshold. The overlays are hidden when calibration is turned off.
 
@@ -111,6 +111,16 @@ When calibration is enabled, overlays show person boxes, confidence, and track I
 - visible person without a directional crossing → no entrant event.
 
 Both the tracker and policy suppress duplicate track IDs.
+
+Doorbell events include `evidence: 'inferred'`, the observed disappearance `timestamp`, and the later `confirmedAt`. Authorization uses the disappearance time; UI countdowns use confirmation time. Recent credential-window history is bounded to 16 windows, retained across expiry for delayed inference, closed by subsequent verification attempts, and cleared on session reset.
+
+## Processing and QR budgets
+
+- MobileNet v2 runs at a target of 5 FPS with 40% confidence passed directly to `detect`; calibration can lower it to 20%. Crop recovery uses up to two additional inferences and a 20% recovery threshold so partial people block false disappearance decisions.
+- QR scanning targets 8 FPS in a dedicated worker. It attempts native full-frame decoding, full-frame contrast normalization, then a rotating enlarged crop with raw/normalized pixels: at most four attempts, each capped at 1.5 million pixels. These are targets, not guaranteed processing rates.
+- Each processor has its own single-flight lane. Freshness uses presented video frame callbacks (or decoded-frame counters), so an advancing playback clock alone cannot advance absence. Browsers without either freshness signal can scan QR but cannot infer entry. Results reach callbacks immediately; the 2 Hz display map is solely for overlays and diagnostics. Session versions discard old results and old verification responses on reset or source change.
+- New credentials encode a `pf2` HMAC-signed tuple `[passId, displayName, location, validFromMs, validUntilMs]`; verification also accepts existing `pf1` credentials. Public credential fields remain unchanged. QR presentation uses pure black and white, a four-module quiet zone, and integer module scaling.
+- Synthetic degraded-image tests establish decoding and failure boundaries. A dense legacy QR at the tested perspective remains unreadable while the compact symbol decodes; regeneration is preferred for phone presentation. Neither decoder nor preprocessing can recover a clipped, fully washed-out, or severely blurred code.
 
 ## Current state
 

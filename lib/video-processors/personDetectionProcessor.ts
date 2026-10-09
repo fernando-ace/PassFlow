@@ -2,13 +2,14 @@ import { processorRegistry } from './registry'
 import type { BoundingBox, ProcessorResult, VideoProcessor } from './types'
 import { ENTRANCE_CONFIG } from '@/lib/entrance/config.mjs'
 import { DoorwayTracker } from '@/lib/entrance/trackerCore.mjs'
+import { boxesOverlap, cropFrame } from './frameTools.mjs'
 
 export const PERSON_DETECTION_PROCESSOR_ID = 'passflow-person-detection'
 
 export const PERSON_DETECTION_CONFIG = {
-  minimumConfidence: 0.55,
-  minimumInferenceIntervalMs: 500,
-  modelBase: 'lite_mobilenet_v2' as const,
+  minimumConfidence: 0.4,
+  minimumInferenceIntervalMs: 200,
+  modelBase: 'mobilenet_v2' as const,
 }
 
 export type PersonDetectorStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -16,6 +17,7 @@ export type PersonDetectorStatus = 'idle' | 'loading' | 'ready' | 'error'
 export interface PersonCalibrationConfig {
   entranceMode: 'boundary' | 'doorbell'
   doorbellNearCameraHeightRatio: number
+  doorbellExitSide: 'left' | 'right'
   boundaryPositionRatio: number
   enteringDirection: 'positive' | 'negative'
   neutralZoneWidthRatio: number
@@ -37,7 +39,7 @@ interface CocoPrediction {
 }
 
 interface CocoModel {
-  detect(input: ImageData): Promise<CocoPrediction[]>
+  detect(input: ImageData, maxNumBoxes: number, minScore: number): Promise<CocoPrediction[]>
   dispose(): void
 }
 
@@ -74,6 +76,9 @@ export class PersonDetectionProcessor implements VideoProcessor {
   private boundary: BoundaryConfig = { ...ENTRANCE_CONFIG.boundary }
   private entranceMode: PersonCalibrationConfig['entranceMode'] = 'boundary'
   private doorbellNearCameraHeightRatio: number = ENTRANCE_CONFIG.doorbellNearCameraHeightRatio
+  private sessionVersion = 0
+  private sampleTimes: number[] = []
+  private lastSampleAt: number | null = null
 
   constructor(options: PersonDetectionProcessorOptions = {}) {
     this.minimumConfidence = options.minimumConfidence ?? PERSON_DETECTION_CONFIG.minimumConfidence
@@ -102,20 +107,42 @@ export class PersonDetectionProcessor implements VideoProcessor {
     return this.initialization
   }
 
-  async process(frame: ImageData): Promise<ProcessorResult | null> {
-    const now = this.now()
+  async process(frame: ImageData, _canvas?: HTMLCanvasElement, _video?: HTMLVideoElement,
+    context?: { capturedAt: number; healthy: boolean }): Promise<ProcessorResult | null> {
+    const now = context?.capturedAt ?? this.now()
+    const session = this.sessionVersion
     if (now - this.lastInferenceAt < this.minimumInferenceIntervalMs) return null
     this.lastInferenceAt = now
 
     if (!this.model && this.status === 'error') return null
     await this.init()
-    if (!this.model) return null
+    if (!this.model || session !== this.sessionVersion) return null
 
     const startedAt = performance.now()
-    const predictions = await this.model.detect(frame)
+    const predictions = await this.model.detect(frame, 30, this.minimumConfidence)
     const people = predictions.filter((prediction) => (
       prediction.class === 'person' && prediction.score >= this.minimumConfidence
     ))
+    // Recover truncated/occluded people before interpreting their disappearance.
+    let recoveryAttempts = 0
+    let recoveryComplete = true
+    for (const box of this.tracker.getRecoveryBoxes()) {
+      if (people.some((p) => boxesOverlap(box, { x: p.bbox[0], y: p.bbox[1], width: p.bbox[2], height: p.bbox[3] }))) continue
+      if (recoveryAttempts >= 2) { recoveryComplete = false; break }
+      const crop = cropFrame(frame, box)
+      if (!crop) continue
+      recoveryAttempts += 1
+      const recovered = await this.model.detect(new ImageData(crop.frame.data, crop.frame.width, crop.frame.height),
+        10, Math.min(this.minimumConfidence, 0.2))
+      for (const p of recovered.filter((p) => p.class === 'person')) {
+        const translated = { x: p.bbox[0] + crop.x, y: p.bbox[1] + crop.y, width: p.bbox[2], height: p.bbox[3] }
+        if (!boxesOverlap(box, translated)) continue
+        if (people.some((other) => boxesOverlap(translated,
+          { x: other.bbox[0], y: other.bbox[1], width: other.bbox[2], height: other.bbox[3] }))) continue
+        people.push({ ...p, bbox: [translated.x, translated.y, translated.width, translated.height] })
+      }
+    }
+    if (session !== this.sessionVersion) return null
     const detections: BoundingBox[] = people.map((prediction) => ({
       x: prediction.bbox[0],
       y: prediction.bbox[1],
@@ -125,11 +152,17 @@ export class PersonDetectionProcessor implements VideoProcessor {
       confidence: prediction.score,
       color: '#0d9488',
     }))
+    const healthy = recoveryComplete && (context?.healthy ?? true) && (this.lastSampleAt === null
+      || now - this.lastSampleAt <= Math.max(ENTRANCE_CONFIG.maximumSampleGapMs, this.minimumInferenceIntervalMs * 1.5))
+    this.lastSampleAt = now
+    this.sampleTimes = [...this.sampleTimes.filter((time) => now - time < 2_000), now]
+    const actualFps = this.sampleTimes.length > 1
+      ? (this.sampleTimes.length - 1) * 1_000 / Math.max(1, now - this.sampleTimes[0]) : 0
     const tracking = this.tracker.update(detections, now, {
       width: frame.width,
       height: frame.height,
-    })
-    const boundingBoxes: BoundingBox[] = tracking.tracks.map((track) => ({
+    }, healthy)
+    const boundingBoxes: BoundingBox[] = tracking.tracks.filter((track) => track.fresh).map((track) => ({
       ...track.bbox,
       label: track.nearCamera ? `Person #${track.id} · Near camera` : `Person #${track.id}`,
       confidence: track.confidence,
@@ -188,6 +221,9 @@ export class PersonDetectionProcessor implements VideoProcessor {
         crossings: tracking.crossings,
         inferenceMs: Math.round(performance.now() - startedAt),
         samplingFps: Math.round((1_000 / this.minimumInferenceIntervalMs) * 10) / 10,
+        actualFps: Math.round(actualFps * 10) / 10,
+        healthy,
+        recoveryAttempts,
       },
       message: boundingBoxes.length === 1
         ? '1 person detected'
@@ -204,11 +240,15 @@ export class PersonDetectionProcessor implements VideoProcessor {
   }
 
   resetSession() {
+    this.sessionVersion += 1
     this.tracker.reset()
+    this.sampleTimes = []
+    this.lastSampleAt = null
     this.lastInferenceAt = Number.NEGATIVE_INFINITY
   }
 
   configure(config: PersonCalibrationConfig) {
+    this.resetSession()
     this.entranceMode = config.entranceMode
     this.doorbellNearCameraHeightRatio = config.doorbellNearCameraHeightRatio
     this.minimumConfidence = config.minimumConfidence
@@ -222,8 +262,10 @@ export class PersonDetectionProcessor implements VideoProcessor {
     this.tracker.configure({
       mode: this.entranceMode,
       doorbellNearCameraHeightRatio: this.doorbellNearCameraHeightRatio,
+      doorbellExitSide: config.doorbellExitSide,
       boundary: { ...this.boundary },
       tracking: ENTRANCE_CONFIG.tracking,
+      maximumSampleGapMs: Math.max(ENTRANCE_CONFIG.maximumSampleGapMs, this.minimumInferenceIntervalMs * 1.5),
     })
     this.lastInferenceAt = Number.NEGATIVE_INFINITY
   }
@@ -231,6 +273,8 @@ export class PersonDetectionProcessor implements VideoProcessor {
   getStatus() {
     return { status: this.status, error: this.statusError }
   }
+
+  getSessionVersion() { return this.sessionVersion }
 
   subscribeStatus(listener: () => void) {
     this.statusListeners.add(listener)
@@ -253,7 +297,11 @@ export class PersonDetectionProcessor implements VideoProcessor {
     await import('@tensorflow/tfjs-backend-webgl')
     const cocoSsd = await import('@tensorflow-models/coco-ssd')
 
-    await tf.setBackend('webgl')
+    try {
+      if (!await tf.setBackend('webgl')) await tf.setBackend('cpu')
+    } catch {
+      await tf.setBackend('cpu')
+    }
     await tf.ready()
     return cocoSsd.load({ base: PERSON_DETECTION_CONFIG.modelBase }) as Promise<CocoModel>
   }

@@ -30,6 +30,9 @@ function credentialLabel(decision: AccessDecisionState) {
 }
 
 function decisionMessage(decision: AccessDecisionState) {
+  if (decision.entryEvidence === 'inferred' && ['authorized-entry', 'possible-tailgating', 'unauthorized-entry'].includes(decision.outcome)) {
+    return 'Inferred entry from a close approach and full departure through the door-side edge. The doorway itself is outside the camera view.'
+  }
   if (decision.outcome === 'authorized-entry') return 'One entrant crossed during the active credential window.'
   if (decision.outcome === 'possible-tailgating') return 'More than one entrant crossed during a single credential window.'
   if (decision.outcome === 'unauthorized-entry') return 'An entrant crossed without an active valid credential window.'

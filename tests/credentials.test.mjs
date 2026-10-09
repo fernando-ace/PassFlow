@@ -33,9 +33,34 @@ function signPayload(payloadObject) {
   return `${signedValue}.${signature}`
 }
 
+test('continues verifying legacy pf1 passes with the same public credential shape', () => {
+  const credential = { version: 1, passId: '4fc0f2be-10a7-4b3a-a3b6-b4d29c2e9862', ...input() }
+  const result = verifySignedCredential(signPayload(credential), now)
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.credential, credential)
+})
+
+test('compact format retains Unicode names and millisecond validity', () => {
+  const created = createSignedCredential(input({ displayName: 'Zoë 李', validFrom: '2026-09-23T17:00:00.123Z' }))
+  assert.deepEqual(verifySignedCredential(created.token, now).credential, created.credential)
+  assert.ok(created.token.length < signPayload(created.credential).length)
+})
+
+test('signed compact payload with invalid time bounds or tuple shape is malformed', () => {
+  const created = createSignedCredential(input())
+  const payload = JSON.parse(Buffer.from(created.token.split('.')[1], 'base64url').toString('utf8'))
+  for (const bad of [[...payload, 'extra'], [payload[0], payload[1], payload[2], -1, payload[4]],
+    [payload[0], payload[1], payload[2], payload[4], payload[3]]]) {
+    const encoded = Buffer.from(JSON.stringify(bad)).toString('base64url')
+    const value = `pf2.${encoded}`
+    const signed = `${value}.${createHmac('sha256', signingSecret).update(value).digest('base64url')}`
+    assert.equal(verifySignedCredential(signed, now).status, 'malformed')
+  }
+})
+
 test('generates and verifies a valid credential', () => {
   const created = createSignedCredential(input())
-  assert.match(created.token, /^pf1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  assert.match(created.token, /^pf2\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
   assert.equal(created.credential.displayName, 'Credential Test Visitor')
   assert.equal(created.credential.location, 'Front door')
   assert.match(created.credential.passId, /^[0-9a-f-]{36}$/i)
@@ -70,7 +95,7 @@ test('rejects a modified payload', () => {
   const created = createSignedCredential(input())
   const [prefix, payload, signature] = created.token.split('.')
   const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
-  parsed.location = 'Modified door'
+  parsed[2] = 'Modified door'
   const modifiedPayload = Buffer.from(JSON.stringify(parsed)).toString('base64url')
 
   const result = verifySignedCredential(`${prefix}.${modifiedPayload}.${signature}`, now)
