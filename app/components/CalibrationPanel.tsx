@@ -61,15 +61,42 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
       </div>
 
       <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2">
-        <NumberControl label="Entrance boundary" value={Math.round(settings.boundaryPositionRatio * 100)} min={10} max={90} step={1} suffix="%" onChange={(value) => update('boundaryPositionRatio', value / 100)} />
         <label className="block">
-          <span className="text-xs font-semibold text-passflow-ink">Crossing direction</span>
-          <select className="form-control mt-2 min-h-10" value={settings.enteringDirection} onChange={(event) => update('enteringDirection', event.target.value as 'positive' | 'negative')}>
-            <option value="positive">Toward lower/right side</option>
-            <option value="negative">Toward upper/left side</option>
+          <span className="text-xs font-semibold text-passflow-ink">Entrance detection mode</span>
+          <select
+            aria-label="Entrance detection mode"
+            className="form-control mt-2 min-h-10"
+            value={settings.entranceMode}
+            onChange={(event) => update('entranceMode', event.target.value as 'boundary' | 'doorbell')}
+          >
+            <option value="boundary">Boundary crossing</option>
+            <option value="doorbell">Doorbell close approach</option>
           </select>
         </label>
-        <NumberControl label="Neutral-zone width" value={Math.round(settings.neutralZoneWidthRatio * 100)} min={0} max={20} step={1} suffix="%" onChange={(value) => update('neutralZoneWidthRatio', value / 100)} />
+        {settings.entranceMode === 'boundary' ? <>
+          <NumberControl label="Entrance boundary" value={Math.round(settings.boundaryPositionRatio * 100)} min={10} max={90} step={1} suffix="%" onChange={(value) => update('boundaryPositionRatio', value / 100)} />
+          <label className="block">
+            <span className="text-xs font-semibold text-passflow-ink">Crossing direction</span>
+            <select className="form-control mt-2 min-h-10" value={settings.enteringDirection} onChange={(event) => update('enteringDirection', event.target.value as 'positive' | 'negative')}>
+              <option value="positive">Toward lower/right side</option>
+              <option value="negative">Toward upper/left side</option>
+            </select>
+          </label>
+          <NumberControl label="Neutral-zone width" value={Math.round(settings.neutralZoneWidthRatio * 100)} min={0} max={20} step={1} suffix="%" onChange={(value) => update('neutralZoneWidthRatio', value / 100)} />
+        </> : <>
+          <NumberControl
+            label="Near-camera size threshold"
+            value={Math.round(settings.doorbellNearCameraHeightRatio * 100)}
+            min={30}
+            max={90}
+            step={5}
+            suffix="% frame height"
+            onChange={(value) => update('doorbellNearCameraHeightRatio', value / 100)}
+          />
+          <p className="text-xs leading-5 text-passflow-muted sm:col-span-2">
+            A person is counted after reaching this size and then staying out of view until their track expires. This infers entry; it cannot confirm that someone crossed a physical doorway.
+          </p>
+        </>}
         <NumberControl label="Person confidence" value={Math.round(settings.minimumConfidence * 100)} min={20} max={95} step={5} suffix="%" onChange={(value) => update('minimumConfidence', value / 100)} />
         <NumberControl label="QR sampling rate" value={settings.qrSamplingFps} min={1} max={10} step={1} suffix=" FPS" onChange={(value) => update('qrSamplingFps', value)} />
         <NumberControl label="Person sampling rate" value={settings.samplingFps} min={1} max={10} step={1} suffix=" FPS" onChange={(value) => update('samplingFps', value)} />
@@ -77,11 +104,13 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
       </div>
 
       <div className="mt-5 border-t border-passflow-warning/20 pt-4 text-xs leading-5 text-passflow-muted">
-        <p>Boundary line, neutral-zone edges, person boxes, and track IDs are visible on the feed.</p>
+        <p>{settings.entranceMode === 'boundary'
+          ? 'Boundary line, neutral-zone edges, person boxes, and track IDs are visible on the feed.'
+          : 'Near-camera person boxes and track IDs are highlighted on the feed.'}</p>
         <p className="mt-1 font-semibold text-passflow-ink">
           {lastCrossingTrackIds.length
-            ? `Crossing event: track ${lastCrossingTrackIds.map((id) => `#${id}`).join(', ')}`
-            : 'Crossing event: none yet'}
+            ? `Entry event: track ${lastCrossingTrackIds.map((id) => `#${id}`).join(', ')}`
+            : 'Entry event: none yet'}
         </p>
       </div>
     </section>

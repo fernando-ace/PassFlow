@@ -2,7 +2,7 @@
 
 PassFlow is a privacy-first visual access-control system for small businesses. It is being built for the Ring track of the Amazon App Dev Challenge.
 
-This repository covers a focused visual-access flow: connect to a Ring live-view session, verify a signed QR credential, detect and track people locally in sampled video frames, count directional entrance crossings, and classify authorized, possible-tailgating, and unauthorized entry events.
+This repository covers a focused visual-access flow: connect to a Ring live-view session, verify a signed QR credential, detect and track people locally in sampled video frames, infer entrance events using either a directional boundary or a doorbell close-approach disappearance, and classify authorized, possible-tailgating, and unauthorized entry events.
 
 PassFlow began from Amazon's official [Ring API Hello World](https://github.com/AmazonAppDev/ring-api-helloworld) sample. The Ring integration remains the authoritative foundation; the product UI and client state are kept separate from the server-side Ring routes.
 
@@ -52,7 +52,7 @@ The QR contains only a signed PassFlow token. The signing secret and credential 
 - **`lib/credentials/verifyQrCredential.ts`** classifies non-PassFlow QR values locally and sends signed PassFlow values to the server verification route. Both the Ring path and development harness use it.
 - **`lib/video-processors/personDetectionProcessor.ts`** begins warming browser-side COCO-SSD when the app loads, keeps it warm across stream resets, reports loading/ready/failure state, and rate-limits inference to 2 FPS by default.
 - **`lib/entrance/trackerCore.mjs`** assigns anonymous short-lived track IDs using IoU and bottom-center distance, then emits one entering event when a track crosses the configured boundary in the expected direction.
-- **`lib/access/decisionCore.mjs`** combines verified credentials and crossing events in a configurable 12-second window. The first distinct entrant is authorized; additional entrants trigger possible tailgating; crossings without an active window are unauthorized.
+- **`lib/access/decisionCore.mjs`** combines verified credentials and entrance events in a configurable 12-second window. The first distinct entrant is authorized; additional entrants trigger possible tailgating; entrants without an active window are unauthorized.
 
 ## Requirements
 
@@ -247,7 +247,7 @@ The harness supports:
 - person bounding boxes, confidence, anonymous track IDs, and the calibrated entrance line in development only; and
 - credential-plus-video and no-credential video controls for authorized, tailgating, unauthorized, and no-crossing scenarios.
 
-The main Ring screen also exposes an opt-in development-only calibration panel for the live feed. It adjusts the entrance boundary, crossing direction, neutral-zone width, person confidence, QR/person sampling rates, and credential window without changing production defaults. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered Saturday checklist and the exact values to record.
+The main Ring screen also exposes an opt-in development-only calibration panel for the live feed. It supports Boundary and Doorbell entrance modes, remembers the selected mode and Doorbell near-camera threshold in this browser, and adjusts mode-specific calibration plus person confidence, QR/person sampling rates, and the credential window. Doorbell disappearance is an inferred entry, not physical threshold confirmation. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered physical-device checklist and the values to record.
 
 Static images and video files remain local to the browser. Every video frame passes through the same sampled QR and person processors as Ring video. Every new PassFlow value then passes through the same server verification request used by `LiveCamera`, while person detections pass through the shared tracker, boundary, and access-decision policy.
 
@@ -318,7 +318,7 @@ The QR and person processors share one frame-sampling registry so development vi
 
 **Physical Ring camera calibration and camera-in-the-loop acceptance.**
 
-Display a generated PassFlow QR on a phone, run real entrants through the doorway, calibrate the boundary, and confirm the complete Ring WebRTC → QR verification → person detection → tracked crossing → access-decision path. Until that physical test is complete, the Ring path remains explicitly unverified.
+Display a generated PassFlow QR on a phone, run real entrants through the doorway, calibrate the selected Boundary or Doorbell mode, and confirm the complete Ring WebRTC → QR verification → person detection → entrance-event → access-decision path. Doorbell mode infers entry from close approach followed by disappearance; it does not prove physical threshold crossing. Until that physical test is complete, the Ring path remains explicitly unverified.
 
 ## License
 

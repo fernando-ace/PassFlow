@@ -14,11 +14,11 @@ Use this checklist during the limited Saturday device session. Keep PassFlow in 
 
 1. **Connect/discover the physical Ring.** Confirm the intended camera name appears, the Ring status reads **Online**, and no credential is exposed in browser requests or UI.
 2. **Verify WHEP live video.** Select **Start Live View**. Confirm the real camera image appears, the **Live** indicator remains stable, and stopping/restarting closes and recreates the session cleanly.
-3. **Calibrate entrance boundary and direction.** Open **Calibrate Ring feed**. Place the boundary across the physical threshold, set the entering direction, and adjust the neutral zone so standing or shifting near the line does not count.
-4. **Verify person detection.** Wait for **Vision ready**. Walk through the full visible approach and confirm person boxes remain on the same anonymous track ID long enough to cross the boundary once.
+3. **Choose an entrance mode.** Open **Calibrate Ring feed** and select **Boundary crossing** for a view that shows the threshold, or **Doorbell close approach** for a camera mounted beside the door. Boundary mode uses a calibrated line and direction. Doorbell mode counts an inferred entry when a person reaches the near-camera size threshold and then remains unseen until the track expires.
+4. **Calibrate and verify person detection.** Wait for **Vision ready**. In Boundary mode, place the boundary across the visible threshold and adjust direction/neutral zone. In Doorbell mode, adjust the near-camera size threshold until close approaches are highlighted while people farther away are not. Walk through the visible approach and confirm the expected event occurs once.
 5. **Test phone QR at several distances, angles, and brightness levels.** Try straight-on and modest angles, low/medium/high brightness, and several practical distances. Record the reliable range and failure boundary.
-6. **Valid credential + one entrant.** Scan a currently valid pass, confirm the 12-second window opens, cross once, and verify **AUTHORIZED ENTRY** with one entrant counted.
-7. **Valid credential + two entrants.** Scan a fresh valid pass, have two people cross, and verify **POSSIBLE TAILGATING** with at least two distinct track IDs.
+6. **Valid credential + one entrant.** Scan a currently valid pass, confirm the 12-second window opens, complete one boundary crossing or doorbell close-approach/disappearance, and verify **AUTHORIZED ENTRY** with one entrant counted.
+7. **Valid credential + two entrants.** Scan a fresh valid pass, have two people cross the boundary or approach and disappear separately in Doorbell mode, and verify **POSSIBLE TAILGATING** with at least two distinct track IDs.
 8. **Staggered second entrant.** Scan a fresh valid pass, cross once, then send the second person several seconds later but before the entry window closes. Verify the decision advances from authorized to possible tailgating.
 9. **No credential.** Reset the session, cross without presenting a QR, and verify **UNAUTHORIZED ENTRY**.
 10. **Expired/invalid credential.** Present an expired credential and a modified or non-PassFlow QR, then cross. Verify rejection is visible and the crossing results in **UNAUTHORIZED ENTRY**.
@@ -55,5 +55,6 @@ Photograph or screenshot the final calibration panel and camera placement, but d
 - Reset permits an immediate clean retry without a Ring reconnect or model reload.
 - A valid unused credential returns to **WAITING FOR CREDENTIAL** after the configured timeout.
 - Calibration overlays are available only in development and disappear when the panel is hidden.
+- Doorbell mode does not count a near-camera person who remains visible or a person who disappears without first reaching the configured size threshold; its entry decision is an inference, not confirmation of physical threshold crossing.
 - The normal product UI always makes Ring, credential, vision, entry-window, entrant-count, and final-decision status understandable without debug data.
 - Save only short, intentional demo recordings and the calibration notes; do not add large recordings to Git.

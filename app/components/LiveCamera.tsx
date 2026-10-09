@@ -22,10 +22,16 @@ import type { ProcessorResult } from '@/lib/video-processors/types'
 import type { DetectionEvent } from '@/lib/types/events'
 import { CalibrationPanel, type CalibrationSettings } from './CalibrationPanel'
 import { ApertureIcon, PlayIcon, StopIcon } from './icons'
+import {
+  DEFAULT_ENTRANCE_PREFERENCES,
+  ENTRANCE_PREFERENCES_STORAGE_KEY,
+  parseEntrancePreferences,
+} from '@/lib/entrance/preferences.mjs'
 
 const NO_EVENTS: DetectionEvent[] = []
 const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
 const DEFAULT_CALIBRATION: CalibrationSettings = {
+  ...DEFAULT_ENTRANCE_PREFERENCES,
   boundaryPositionRatio: 0.62,
   enteringDirection: 'positive',
   neutralZoneWidthRatio: 0.07,
@@ -65,6 +71,7 @@ export function LiveCamera({
   const [qrDetected, setQrDetected] = useState(false)
   const [calibrationEnabled, setCalibrationEnabled] = useState(false)
   const [calibration, setCalibration] = useState(DEFAULT_CALIBRATION)
+  const [entrancePreferencesLoaded, setEntrancePreferencesLoaded] = useState(false)
   const [visionState, setVisionState] = useState<{ status: PersonDetectorStatus; error: string | null }>({
     status: 'idle',
     error: null,
@@ -94,6 +101,30 @@ export function LiveCamera({
     })
     return unsubscribe
   }, [])
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(ENTRANCE_PREFERENCES_STORAGE_KEY)
+      const preferences = parseEntrancePreferences(saved)
+      setCalibration((current) => ({ ...current, ...preferences }))
+    } catch {
+      // Keep the in-memory defaults when browser storage is unavailable.
+    } finally {
+      setEntrancePreferencesLoaded(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!entrancePreferencesLoaded) return
+    try {
+      window.localStorage.setItem(ENTRANCE_PREFERENCES_STORAGE_KEY, JSON.stringify({
+        entranceMode: calibration.entranceMode,
+        doorbellNearCameraHeightRatio: calibration.doorbellNearCameraHeightRatio,
+      }))
+    } catch {
+      // The selected mode still works for this page session without storage.
+    }
+  }, [calibration.doorbellNearCameraHeightRatio, calibration.entranceMode, entrancePreferencesLoaded])
 
   useEffect(() => {
     getPersonDetectionProcessor()?.configure(calibration)

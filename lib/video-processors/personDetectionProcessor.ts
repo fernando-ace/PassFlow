@@ -14,6 +14,8 @@ export const PERSON_DETECTION_CONFIG = {
 export type PersonDetectorStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export interface PersonCalibrationConfig {
+  entranceMode: 'boundary' | 'doorbell'
+  doorbellNearCameraHeightRatio: number
   boundaryPositionRatio: number
   enteringDirection: 'positive' | 'negative'
   neutralZoneWidthRatio: number
@@ -70,6 +72,8 @@ export class PersonDetectionProcessor implements VideoProcessor {
   private statusError: string | null = null
   private statusListeners = new Set<() => void>()
   private boundary: BoundaryConfig = { ...ENTRANCE_CONFIG.boundary }
+  private entranceMode: PersonCalibrationConfig['entranceMode'] = 'boundary'
+  private doorbellNearCameraHeightRatio: number = ENTRANCE_CONFIG.doorbellNearCameraHeightRatio
 
   constructor(options: PersonDetectionProcessorOptions = {}) {
     this.minimumConfidence = options.minimumConfidence ?? PERSON_DETECTION_CONFIG.minimumConfidence
@@ -127,9 +131,9 @@ export class PersonDetectionProcessor implements VideoProcessor {
     })
     const boundingBoxes: BoundingBox[] = tracking.tracks.map((track) => ({
       ...track.bbox,
-      label: `Person #${track.id}`,
+      label: track.nearCamera ? `Person #${track.id} · Near camera` : `Person #${track.id}`,
       confidence: track.confidence,
-      color: track.entered ? '#059669' : '#0d9488',
+      color: track.entered ? '#059669' : track.nearCamera ? '#f59e0b' : '#0d9488',
       debugOnly: true,
     }))
     const boundaryPosition = this.boundary.orientation === 'horizontal'
@@ -137,7 +141,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
       : frame.width * this.boundary.positionRatio
     const neutralOffset = (this.boundary.orientation === 'horizontal' ? frame.height : frame.width)
       * this.boundary.zoneHalfWidthRatio
-    const overlayLines = this.boundary.orientation === 'horizontal'
+    const overlayLines = this.entranceMode === 'doorbell' ? [] : this.boundary.orientation === 'horizontal'
       ? [{
           x1: 0,
           y1: boundaryPosition,
@@ -179,6 +183,7 @@ export class PersonDetectionProcessor implements VideoProcessor {
       overlayLines,
       data: {
         peopleDetected: people.length,
+        entranceMode: this.entranceMode,
         tracks: tracking.tracks,
         crossings: tracking.crossings,
         inferenceMs: Math.round(performance.now() - startedAt),
@@ -204,6 +209,8 @@ export class PersonDetectionProcessor implements VideoProcessor {
   }
 
   configure(config: PersonCalibrationConfig) {
+    this.entranceMode = config.entranceMode
+    this.doorbellNearCameraHeightRatio = config.doorbellNearCameraHeightRatio
     this.minimumConfidence = config.minimumConfidence
     this.minimumInferenceIntervalMs = 1_000 / config.samplingFps
     this.boundary = {
@@ -213,6 +220,8 @@ export class PersonDetectionProcessor implements VideoProcessor {
       zoneHalfWidthRatio: config.neutralZoneWidthRatio / 2,
     }
     this.tracker.configure({
+      mode: this.entranceMode,
+      doorbellNearCameraHeightRatio: this.doorbellNearCameraHeightRatio,
       boundary: { ...this.boundary },
       tracking: ENTRANCE_CONFIG.tracking,
     })
