@@ -23,6 +23,17 @@ function getDiscoveryError(status: number) {
   return `Ring device discovery failed with status ${status}.`
 }
 
+async function getDeviceOnline(token: string, deviceId: string) {
+  const response = await fetch(`${API_BASE}/v1/devices/${deviceId}/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  if (!response.ok) return undefined
+  const data = await response.json()
+  const online = data?.data?.attributes?.online
+  return typeof online === 'boolean' ? online : undefined
+}
+
 export async function GET() {
   try {
     const token = await getAccessToken()
@@ -69,11 +80,15 @@ export async function GET() {
     const data = await res.json()
 
     // Normalize JSON:API response to simple device list
-    const devices = (data?.data || []).map((device: RingApiDevice) => ({
-      id: device.id,
-      name: device.attributes?.name || device.attributes?.description || 'Ring Device',
-      online: device.attributes?.online || false,
-      capabilities: device.attributes?.capabilities || {},
+    const devices = await Promise.all((data?.data || []).map(async (device: RingApiDevice) => {
+      // Ring Private App device listings may omit `online`; ask the status endpoint.
+      const statusOnline = await getDeviceOnline(token, device.id)
+      return {
+        id: device.id,
+        name: device.attributes?.name || device.attributes?.description || 'Ring Device',
+        online: statusOnline ?? (typeof device.attributes?.online === 'boolean' ? device.attributes.online : false),
+        capabilities: device.attributes?.capabilities || {},
+      }
     }))
 
     return NextResponse.json({ devices })
