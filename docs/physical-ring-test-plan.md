@@ -1,6 +1,6 @@
 # Physical Ring validation plan
 
-Use this checklist during the limited Saturday device session. Keep PassFlow in development mode so the Ring feed calibration panel is available. Do not change the model or product flow during the session unless a blocking defect is found; the goal is calibration, validation, and recording.
+Use this checklist during the Ring device session. The Ring feed calibration panel is available in both development and production. Do not change the model or product flow during the session unless a blocking defect is found; the goal is calibration, validation, and recording.
 
 ## Before the device session
 
@@ -54,7 +54,7 @@ Photograph or screenshot the final calibration panel and camera placement, but d
 - Every required decision scenario produces the expected final state twice in succession.
 - Reset permits an immediate clean retry without a Ring reconnect or model reload.
 - A valid unused credential returns to **WAITING FOR CREDENTIAL** after the configured timeout.
-- Calibration overlays are available only in development and disappear when the panel is hidden.
+- Calibration overlays are available only while the calibration panel is enabled and disappear when it is hidden.
 - Doorbell mode does not count a near-camera person who remains visible or a person who disappears without first reaching the configured size threshold; its entry decision is an inference, not confirmation of physical threshold crossing.
 - The normal product UI always makes Ring, credential, vision, entry-window, entrant-count, and final-decision status understandable without debug data.
 - Save only short, intentional demo recordings and the calibration notes; do not add large recordings to Git.

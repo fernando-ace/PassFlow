@@ -97,9 +97,9 @@ Do not register placeholder processors merely to populate the UI. Add a processo
 
 The entrance defaults live in `lib/entrance/config.mjs`. Boundary mode remains the default: it uses a horizontal boundary at 62% of frame height, a 3.5% half-width neutral zone, and positive-axis inbound movement. A track counts once only after moving from the outside side through or across the neutral zone to the inside side.
 
-Doorbell mode is available in the development-only Ring calibration panel. It marks a person near the camera when their detected box reaches the configured fraction of frame height (65% by default). The person must then remain undetected until the normal track-expiry grace period completes before one entrant event is emitted. Brief detection gaps that recover before expiry do not count. This is an inferred entry signal: it cannot establish that a person crossed a physical doorway. The mode and near-camera threshold are remembered in browser local storage; other calibration values remain session-only.
+Doorbell mode is available in the opt-in Ring calibration panel in development and production. It marks a person near the camera when their detected box reaches the configured fraction of frame height (65% by default). The person must then remain undetected until the normal track-expiry grace period completes before one entrant event is emitted. Brief detection gaps that recover before expiry do not count. This is an inferred entry signal: it cannot establish that a person crossed a physical doorway. The mode and near-camera threshold are remembered in browser local storage; other calibration values remain session-only.
 
-Development overlays show person boxes, confidence, and track IDs. Boundary mode draws the boundary and neutral-zone edges; Doorbell mode highlights boxes that reached the near-camera threshold. Those CV-debug overlays are marked development-only and are hidden from production UI.
+When calibration is enabled, overlays show person boxes, confidence, and track IDs. Boundary mode draws the boundary and neutral-zone edges; Doorbell mode highlights boxes that reached the near-camera threshold. The overlays are hidden when calibration is turned off.
 
 ## Access policy
 

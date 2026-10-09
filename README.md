@@ -244,10 +244,10 @@ The harness supports:
 - local prerecorded doorway or QR videos, sampled at 2 FPS;
 - generated non-PassFlow QR codes; and
 - an immediate repeated scan that records the first decision and confirms the duplicate is suppressed;
-- person bounding boxes, confidence, anonymous track IDs, and the calibrated entrance line in development only; and
+- person bounding boxes, confidence, anonymous track IDs, and the active entrance calibration when calibration is enabled; and
 - credential-plus-video and no-credential video controls for authorized, tailgating, unauthorized, and no-crossing scenarios.
 
-The main Ring screen also exposes an opt-in development-only calibration panel for the live feed. It supports Boundary and Doorbell entrance modes, remembers the selected mode and Doorbell near-camera threshold in this browser, and adjusts mode-specific calibration plus person confidence, QR/person sampling rates, and the credential window. Doorbell disappearance is an inferred entry, not physical threshold confirmation. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered physical-device checklist and the values to record.
+The main Ring screen also exposes an opt-in calibration panel for the live feed in development and production. It supports Boundary and Doorbell entrance modes, remembers the selected mode and Doorbell near-camera threshold in this browser, and adjusts mode-specific calibration plus person confidence, QR/person sampling rates, and the credential window. Anyone with the production URL can adjust calibration in their own browser. Doorbell disappearance is an inferred entry, not physical threshold confirmation. See [`docs/physical-ring-test-plan.md`](docs/physical-ring-test-plan.md) for the ordered physical-device checklist and the values to record.
 
 Static images and video files remain local to the browser. Every video frame passes through the same sampled QR and person processors as Ring video. Every new PassFlow value then passes through the same server verification request used by `LiveCamera`, while person detections pass through the shared tracker, boundary, and access-decision policy.
 

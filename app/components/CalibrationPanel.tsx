@@ -31,7 +31,7 @@ function NumberControl({ label, value, min, max, step, suffix, onChange }: Numbe
         <span className="font-mono text-passflow-muted">{value}{suffix}</span>
       </span>
       <input
-        className="mt-2 w-full accent-passflow-accent"
+        className="mt-1 min-h-11 w-full touch-pan-x accent-passflow-accent sm:mt-2"
         type="range"
         min={min}
         max={max}
@@ -49,10 +49,10 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
   }
 
   return (
-    <section aria-labelledby="calibration-heading" className="mt-5 rounded-xl border border-passflow-warning/30 bg-passflow-warning/5 p-5">
+    <section id="calibration-panel" aria-labelledby="calibration-heading" className="mt-5 rounded-xl border border-passflow-warning/30 bg-passflow-warning/5 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-passflow-warning">Development only</p>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-passflow-warning">Live calibration</p>
           <h2 id="calibration-heading" className="mt-1 text-lg font-semibold text-passflow-ink">Ring feed calibration</h2>
         </div>
         <p className="text-xs text-passflow-muted">
@@ -65,7 +65,7 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
           <span className="text-xs font-semibold text-passflow-ink">Entrance detection mode</span>
           <select
             aria-label="Entrance detection mode"
-            className="form-control mt-2 min-h-10"
+            className="form-control mt-2 min-h-12"
             value={settings.entranceMode}
             onChange={(event) => update('entranceMode', event.target.value as 'boundary' | 'doorbell')}
           >

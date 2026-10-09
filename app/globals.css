@@ -42,7 +42,7 @@ textarea:focus-visible {
   }
 
   .control-button {
-    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:px-5;
   }
 
   .control-button-primary {

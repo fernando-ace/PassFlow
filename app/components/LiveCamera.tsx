@@ -29,7 +29,6 @@ import {
 } from '@/lib/entrance/preferences.mjs'
 
 const NO_EVENTS: DetectionEvent[] = []
-const IS_DEVELOPMENT = process.env.NODE_ENV === 'development'
 const DEFAULT_CALIBRATION: CalibrationSettings = {
   ...DEFAULT_ENTRANCE_PREFERENCES,
   boundaryPositionRatio: 0.62,
@@ -147,7 +146,7 @@ export function LiveCamera({
     canvasRef,
     events: NO_EVENTS,
     results,
-    showDebug: IS_DEVELOPMENT && calibrationEnabled,
+    showDebug: calibrationEnabled,
   })
   const credentialResult = results.get(QR_CREDENTIAL_PROCESSOR_ID)
   const credentialResultId = credentialResult?.id
@@ -242,7 +241,7 @@ export function LiveCamera({
             : 'Connect to your selected Ring camera to view and analyze the live feed.'}
       </p>
 
-      <div className="relative mt-7 aspect-video overflow-hidden rounded-xl bg-passflow-video text-white ring-1 ring-black/10">
+      <div className="relative mt-6 aspect-video overflow-hidden rounded-xl bg-passflow-video text-white ring-1 ring-black/10 sm:mt-7">
         <video
           ref={attachVideoRef}
           autoPlay
@@ -337,16 +336,15 @@ export function LiveCamera({
             Retry vision model
           </button>
         ) : null}
-        {IS_DEVELOPMENT ? (
-          <button
-            type="button"
-            aria-expanded={calibrationEnabled}
-            className="control-button control-button-secondary"
-            onClick={() => setCalibrationEnabled((enabled) => !enabled)}
-          >
-            {calibrationEnabled ? 'Hide calibration' : 'Calibrate Ring feed'}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-expanded={calibrationEnabled}
+          aria-controls="calibration-panel"
+          className="control-button control-button-secondary w-full sm:w-auto"
+          onClick={() => setCalibrationEnabled((enabled) => !enabled)}
+        >
+          {calibrationEnabled ? 'Hide calibration' : 'Calibrate Ring feed'}
+        </button>
       </div>
 
       {error ? (
@@ -376,7 +374,7 @@ export function LiveCamera({
         </div>
       ) : null}
 
-      {IS_DEVELOPMENT && calibrationEnabled ? (
+      {calibrationEnabled ? (
         <CalibrationPanel
           settings={calibration}
           onChange={setCalibration}
