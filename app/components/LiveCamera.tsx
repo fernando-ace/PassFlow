@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { RingDeviceStatus } from '@/app/types/ring'
-import { verifyQrCredential } from '@/lib/credentials/verifyQrCredential'
+import { isPassFlowQrValue, verifyQrCredential } from '@/lib/credentials/verifyQrCredential'
 import { createCredentialScan } from '@/lib/credentials/scanCore.mjs'
 import type { VerificationResult } from '@/lib/credentials/types'
 import { useCanvasOverlay } from '@/app/hooks/useCanvasOverlay'
@@ -146,6 +146,11 @@ export function LiveCamera({
       indicatorTimer.current = setTimeout(() => setQrDetected(false), 1800)
     }
     if (typeof result.data?.token !== 'string') return
+    if (!isPassFlowQrValue(result.data.token)) {
+      setQrStatus('scanning')
+      setQrStatusDetail('Other QR code ignored. Show the PassFlow credential.')
+      return
+    }
     setQrStatus('detected')
     setQrStatusDetail('')
     const version = getQrCredentialProcessor()?.getSessionVersion()
