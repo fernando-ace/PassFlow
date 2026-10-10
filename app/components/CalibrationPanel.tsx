@@ -101,6 +101,9 @@ export function CalibrationPanel({ settings, onChange, peopleDetected, inference
             onChange={(value) => update('doorbellNearCameraHeightRatio', value / 100)}
           />
           <p className="text-xs leading-5 text-passflow-muted sm:col-span-2">
+            The person must stay above this size for at least 600 ms before leaving through the selected edge. If they reach this size only as they disappear, lower the threshold so close samples can accumulate.
+          </p>
+          <p className="text-xs leading-5 text-passflow-muted sm:col-span-2">
             Entry is inferred only after a sustained close approach, movement through the selected edge, and three seconds fully out of view. Knocking, retreat, and ambiguous detection loss do not count.
           </p>
         </>}

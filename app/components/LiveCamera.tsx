@@ -28,6 +28,8 @@ import {
   DEFAULT_ENTRANCE_PREFERENCES,
   ENTRANCE_PREFERENCES_STORAGE_KEY,
   LEGACY_ENTRANCE_PREFERENCES_STORAGE_KEY,
+  OLDER_ENTRANCE_PREFERENCES_STORAGE_KEY,
+  migrateRecordedFrontDoorPreferences,
   parseEntrancePreferences,
 } from '@/lib/entrance/preferences.mjs'
 
@@ -111,10 +113,16 @@ export function LiveCamera({
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(ENTRANCE_PREFERENCES_STORAGE_KEY)
-        ?? window.localStorage.getItem(LEGACY_ENTRANCE_PREFERENCES_STORAGE_KEY)
-      const preferences = parseEntrancePreferences(saved)
-      setCalibration((current) => ({ ...current, ...preferences }))
+      const current = window.localStorage.getItem(ENTRANCE_PREFERENCES_STORAGE_KEY)
+      const savedV2 = window.localStorage.getItem(LEGACY_ENTRANCE_PREFERENCES_STORAGE_KEY)
+      const savedV1 = window.localStorage.getItem(OLDER_ENTRANCE_PREFERENCES_STORAGE_KEY)
+      const preferences = current
+        ? parseEntrancePreferences(current)
+        : savedV2
+          ? migrateRecordedFrontDoorPreferences(savedV2)
+          : migrateRecordedFrontDoorPreferences(savedV1)
+      const typedPreferences = preferences as CalibrationSettings
+      setCalibration((current) => ({ ...current, ...typedPreferences }))
     } catch {
       // Keep the in-memory defaults when browser storage is unavailable.
     } finally {

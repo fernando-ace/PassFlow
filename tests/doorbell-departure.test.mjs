@@ -4,7 +4,7 @@ import { DoorwayTracker } from '../lib/entrance/trackerCore.mjs'
 
 const frame = { width: 1_000, height: 1_000 }
 const box = (x, height = 700) => ({ x, y: 900 - height, width: 180, height, confidence: 0.8 })
-const tracker = (config = {}) => new DoorwayTracker({ mode: 'doorbell', ...config })
+const tracker = (config = {}) => new DoorwayTracker({ mode: 'doorbell', doorbellExitSide: 'right', ...config })
 function approach(t, shift = 0) {
   for (const [time, x, height] of [[0, 400, 500], [200, 430, 600], [400, 460, 700],
     [600, 490, 700], [800, 520, 700], [1000, 550, 700], [1200, 650, 700], [1400, 760, 700]]) {
@@ -141,6 +141,20 @@ test('left exit calibration mirrors the departure rule', () => {
     t.update([box(820 - x, height)], time, frame)
   }
   assert.equal(absent(t).length, 1)
+})
+
+test('recorded front-door approach counts with left exit and 60% close threshold, not 90%', () => {
+  const observations = [
+    [0, 430, 500], [200, 420, 600], [400, 400, 650], [600, 360, 700],
+    [800, 290, 750], [1000, 200, 800], [1200, 80, 850],
+  ]
+  const run = (threshold) => {
+    const t = tracker({ doorbellExitSide: 'left', doorbellNearCameraHeightRatio: threshold })
+    for (const [time, x, height] of observations) t.update([box(x, height)], time, frame)
+    return absent(t, 1400, 4400)
+  }
+  assert.equal(run(0.6).length, 1)
+  assert.equal(run(0.9).length, 0)
 })
 
 test('the configured 90% close threshold must be sustained; a single large box cannot arm entry', () => {
