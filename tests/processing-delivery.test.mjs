@@ -45,6 +45,23 @@ test('empty frames do not abort a slow verification; resets do discard it', asyn
   }
 })
 
+test('credential rejection keeps the server explanation visible to the scan UI', async () => {
+  const statuses = []
+  const scanner = createCredentialScan({
+    verify: async () => ({ valid: false, status: 'invalid-signature', message: 'Credential signature is invalid.' }),
+    checking: () => {},
+    verified: () => {},
+    status: (state, detail) => statuses.push([state, detail]),
+  })
+
+  await scanner.submit('pf2.sample.signature')
+  assert.deepEqual(statuses, [
+    ['detected', undefined],
+    ['verifying', undefined],
+    ['rejected', 'Credential signature is invalid.'],
+  ])
+})
+
 test('duplicate/frozen presented-frame counters are skipped and a resumed stream is unhealthy', () => {
   const clock = createFrameClock()
   assert.equal(clock.sample(1, 100).healthy, true)

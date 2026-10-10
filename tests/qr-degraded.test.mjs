@@ -17,6 +17,7 @@ const legacy = `${legacyValue}.${createHmac('sha256', process.env.PASSFLOW_SIGNI
 
 // Synthetic image degradation, deliberately not presented as physical Ring evidence.
 function cameraFrame(value, condition, moduleScale = 4) {
+  if (condition === 'small') moduleScale = 2
   const qr = QRCode.create(value, { errorCorrectionLevel: 'M' })
   const extent = (qr.modules.size + 8) * moduleScale
   const width = 800
@@ -56,7 +57,7 @@ function cameraFrame(value, condition, moduleScale = 4) {
 }
 
 for (const [format, value] of [['pf1', legacy], ['pf2', created.token]]) {
-  for (const condition of ['scaled', 'low-contrast', 'inverted', 'perspective', 'blur']) {
+  for (const condition of ['scaled', 'small', 'low-contrast', 'inverted', 'perspective', 'blur']) {
     test(`${format} real-length QR synthetic ${condition}${format === 'pf1' && condition === 'perspective' ? ' records a known optical failure boundary' : ' decodes'}`, () => {
       const decoded = decodeQrFrameRobust(cameraFrame(value, condition))
       if (format === 'pf1' && condition === 'perspective') {

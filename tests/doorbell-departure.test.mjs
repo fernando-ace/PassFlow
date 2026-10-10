@@ -27,6 +27,26 @@ test('counts only sustained approach, right-edge departure and three seconds of 
   assert.equal(absent(t, 4800, 7000).length, 0)
 })
 
+test('slowing at the exit edge does not erase observed departure evidence', () => {
+  const t = tracker()
+  approach(t)
+  t.update([box(761)], 1600, frame)
+  const events = absent(t, 1800, 4800)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].timestamp, 1800)
+  assert.equal(events[0].evidence, 'inferred')
+})
+
+test('a short detection gap after reaching the edge still allows fresh absence to confirm', () => {
+  const t = tracker()
+  approach(t)
+  t.update([], 1600, frame)
+  assert.equal(t.update([], 1800, frame).crossings.length, 0)
+  const events = absent(t, 2000, 4800)
+  assert.equal(events.length, 1)
+  assert.equal(events[0].timestamp, 1600)
+})
+
 test('standing and knocking near the camera never counts', () => {
   const t = tracker()
   for (let time = 0; time <= 3000; time += 200) assert.equal(t.update([box(500)], time, frame).crossings.length, 0)
@@ -46,6 +66,13 @@ test('loss away from the right edge and retreat do not count', () => {
     if (retreat) t.update([box(430, 500)], 1600, frame)
     assert.equal(absent(t, 1800, 7000).length, 0)
   }
+})
+
+test('clear movement back from the exit edge cancels an armed departure', () => {
+  const t = tracker()
+  approach(t)
+  t.update([box(720)], 1600, frame)
+  assert.equal(absent(t, 1800, 7000).length, 0)
 })
 
 test('reacquiring a partially visible person cancels the pending entry', () => {

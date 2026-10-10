@@ -65,13 +65,17 @@ export function LiveCamera({
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null)
   const [qrDetected, setQrDetected] = useState(false)
   const [qrStatus, setQrStatus] = useState('scanning')
+  const [qrStatusDetail, setQrStatusDetail] = useState('')
   const credentialCallbacks = useRef({ onCredentialChecking, onCredentialVerified })
   credentialCallbacks.current = { onCredentialChecking, onCredentialVerified }
   const [scanner] = useState(() => createCredentialScan({
     verify: verifyQrCredential,
     checking: () => credentialCallbacks.current.onCredentialChecking(),
     verified: (result: VerificationResult) => credentialCallbacks.current.onCredentialVerified(result),
-    status: (status: string) => setQrStatus(status),
+    status: (status: string, detail?: string) => {
+      setQrStatus(status)
+      setQrStatusDetail(detail ?? '')
+    },
   }))
   const indicatorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [calibrationEnabled, setCalibrationEnabled] = useState(false)
@@ -135,10 +139,15 @@ export function LiveCamera({
 
   const handleProcessingResult = useCallback((result: ProcessorResult) => {
     if (result.processorId === PERSON_DETECTION_PROCESSOR_ID) onPeopleResult(result)
-    if (result.processorId !== QR_CREDENTIAL_PROCESSOR_ID || typeof result.data?.token !== 'string') return
-    setQrDetected(true)
-    if (indicatorTimer.current) clearTimeout(indicatorTimer.current)
-    indicatorTimer.current = setTimeout(() => setQrDetected(false), 1800)
+    if (result.processorId !== QR_CREDENTIAL_PROCESSOR_ID) return
+    if (result.data?.decoded === true) {
+      setQrDetected(true)
+      if (indicatorTimer.current) clearTimeout(indicatorTimer.current)
+      indicatorTimer.current = setTimeout(() => setQrDetected(false), 1800)
+    }
+    if (typeof result.data?.token !== 'string') return
+    setQrStatus('detected')
+    setQrStatusDetail('')
     const version = getQrCredentialProcessor()?.getSessionVersion()
     void scanner.submit(result.data.token, () => getQrCredentialProcessor()?.getSessionVersion() === version)
   }, [onPeopleResult, scanner])
@@ -180,6 +189,7 @@ export function LiveCamera({
   useEffect(() => {
     scanner.reset()
     setQrDetected(false)
+    setQrStatusDetail('')
     return () => {
       scanner.reset()
       if (indicatorTimer.current) clearTimeout(indicatorTimer.current)
@@ -355,7 +365,8 @@ export function LiveCamera({
       ) : null}
 
       {streamActive ? <p className="mt-2 text-sm text-passflow-muted" role="status">
-        QR: {qrDetected && qrStatus === 'scanning' ? 'Detected' : qrStatus.charAt(0).toUpperCase() + qrStatus.slice(1)}
+        QR: {qrDetected ? 'Decoded' : qrStatus.charAt(0).toUpperCase() + qrStatus.slice(1)}
+        {qrStatusDetail ? ` · ${qrStatusDetail}` : ''}
         {' · '}Hold the full-screen code steady. Adjust screen brightness if the feed shows glare.
       </p> : null}
 
